@@ -1,0 +1,19 @@
+# Data access
+SoccerNet
+
+# Computer vision: detection + tracking
+ultralytics       # YOLOv8 player/ball detection
+opencv-python
+supervision       # ByteTrack wrapper + video annotation utilities
+norfair           # alternative lightweight tracker, useful as a fallback/comparison
+
+# Analysis
+numpy
+pandas
+scipy
+scikit-learn      # clustering (k-means, GMM, DBSCAN)
+
+# Viz / dashboard data
+matplotlib
+plotly
+tqdm

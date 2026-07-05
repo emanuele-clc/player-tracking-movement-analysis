@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
@@ -40,78 +41,81 @@ TEMPLATE_PATH = ROOT / "docs" / "_index_template.html"
 st.set_page_config(page_title="Player Tracking - Analyze a match", layout="wide", page_icon="⚽")
 
 # ---------------------------------------------------------------------------
-# Theme: matches the public dashboard (docs/_index_template.html) so the local
-# app and the live site feel like the same product, not two different demos.
+# Base dark theme lives in .streamlit/config.toml (the robust, official way
+# to theme Streamlit - survives version upgrades, unlike CSS overrides of
+# internal component classes). What follows only styles the handful of
+# custom, bespoke elements config.toml can't reach (the hero banner, section
+# labels, insights callout, badges) - kept deliberately free of CSS comments,
+# since Streamlit runs this string through its markdown parser first and
+# "/* ... */" comments get mangled by markdown's asterisk-as-bold handling,
+# which silently breaks the rest of the stylesheet.
 # ---------------------------------------------------------------------------
 st.markdown("""
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 :root {
   --accent: #35d07f;
   --accent-2: #4fa8ff;
-  --bg: #0a0e14;
   --panel: #121722;
   --panel-2: #161d2b;
   --border: #232d3f;
   --text: #e7edf5;
   --muted: #90a0b7;
-  --muted-2: #5f7089;
-  --team0: #4fa8ff;
-  --team1: #ff6b57;
-  --ref: #f2c744;
   --yellow: #f2b544;
   --red: #ff6b57;
 }
-html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif; }
-.stApp { background: var(--bg); color: var(--text); }
-h1, h2, h3, h4 { color: var(--text) !important; font-weight: 800 !important; letter-spacing: -0.01em; }
-.stMarkdown p, .stMarkdown li, label, .stCaption { color: var(--muted); }
-hr { border-color: var(--border) !important; }
+html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif !important; }
+h1, h2, h3, h4 { font-weight: 800 !important; letter-spacing: -0.01em; }
 
-/* Hero header */
 .app-hero {
-  background: linear-gradient(135deg, #10321f 0%, #0a0e14 60%);
+  position: relative; overflow: hidden;
+  background:
+    radial-gradient(700px 260px at 8% -20%, rgba(53,208,127,0.22), transparent 60%),
+    radial-gradient(600px 260px at 100% 0%, rgba(79,168,255,0.16), transparent 60%),
+    linear-gradient(180deg, #0f1a14 0%, #0a0e14 75%);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 28px 32px;
+  border-radius: 18px;
+  padding: 34px 36px 28px;
   margin-bottom: 22px;
 }
-.app-hero h1 { margin: 0 0 8px; font-size: 1.9rem; }
-.app-hero p { margin: 0; color: var(--muted); font-size: 0.98rem; max-width: 780px; }
-.how-steps { display: flex; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
-.how-step {
-  flex: 1; min-width: 160px; background: rgba(255,255,255,0.03);
-  border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+.app-hero .eyebrow {
+  display: inline-flex; align-items: center; gap: 7px;
+  color: var(--accent); font-size: 0.74rem; font-weight: 800; letter-spacing: 0.14em;
+  text-transform: uppercase; margin-bottom: 12px;
 }
-.how-step .n {
+.app-hero .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.app-hero h1 { margin: 0 0 10px; font-size: 2.1rem; letter-spacing: -0.02em; }
+.app-hero p.lead { margin: 0; color: var(--muted); font-size: 1.02rem; max-width: 760px; line-height: 1.55; }
+.stepper { display: flex; align-items: stretch; gap: 0; margin-top: 26px; flex-wrap: wrap; }
+.step {
+  flex: 1; min-width: 190px; position: relative; padding: 16px 18px 16px 0;
+}
+.step + .step { padding-left: 20px; }
+.step-num {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; border-radius: 50%; background: var(--accent);
-  color: #06130c; font-weight: 800; font-size: 0.78rem; margin-right: 8px;
+  width: 26px; height: 26px; border-radius: 50%; background: rgba(53,208,127,0.14);
+  color: var(--accent); font-weight: 800; font-size: 0.82rem; margin-bottom: 8px;
+  border: 1px solid rgba(53,208,127,0.35);
 }
-.how-step span.label { color: var(--text); font-weight: 600; font-size: 0.88rem; }
+.step-label { color: var(--text); font-weight: 700; font-size: 0.92rem; display: block; }
+.step-sub { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
 
-/* Section panels - wraps st.container(border=True) */
-div[data-testid="stVerticalBlockBorderWrapper"] {
-  background: var(--panel); border-color: var(--border) !important;
-  border-radius: 14px !important;
-}
 .section-eyebrow {
-  color: var(--accent); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em;
-  text-transform: uppercase; margin-bottom: 2px;
+  color: var(--accent); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.1em;
+  text-transform: uppercase; margin-bottom: 3px;
 }
-.section-title { font-size: 1.15rem; font-weight: 800; color: var(--text); margin: 0 0 6px; }
-.section-explain { color: var(--muted); font-size: 0.87rem; margin-bottom: 14px; line-height: 1.5; }
+.section-title { font-size: 1.2rem; font-weight: 800; color: var(--text); margin: 0 0 6px; }
+.section-explain { color: var(--muted); font-size: 0.88rem; margin-bottom: 14px; line-height: 1.55; }
 
-/* Insights callout */
 .insights-box {
-  background: var(--panel-2); border: 1px solid var(--border); border-left: 3px solid var(--accent);
-  border-radius: 10px; padding: 16px 20px; margin-bottom: 4px;
+  background: linear-gradient(135deg, rgba(53,208,127,0.08), rgba(53,208,127,0.02));
+  border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: 12px; padding: 18px 22px; margin-bottom: 4px;
 }
-.insights-box ul { margin: 6px 0 0; padding-left: 18px; }
-.insights-box li { color: var(--text); font-size: 0.92rem; line-height: 1.8; }
+.insights-box ul { margin: 8px 0 0; padding-left: 18px; }
+.insights-box li { color: var(--text); font-size: 0.94rem; line-height: 1.85; }
 
-/* Badges */
 .badge {
   display: inline-block; padding: 5px 14px; border-radius: 16px; font-weight: 700;
   font-size: 0.8rem; margin-right: 6px; margin-bottom: 6px;
@@ -120,41 +124,38 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
 .badge-yellow { background: #332405; color: var(--yellow); border: 1px solid #5c460f; }
 .badge-red { background: #331414; color: var(--red); border: 1px solid #5c1a1a; }
 
-/* Metrics */
+div[data-testid="stVerticalBlockBorderWrapper"] {
+  border-radius: 16px !important;
+}
 div[data-testid="stMetric"] {
-  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px;
 }
-div[data-testid="stMetricValue"] { color: var(--accent); font-weight: 800; }
-div[data-testid="stMetricLabel"] { color: var(--muted); }
+div[data-testid="stFileUploaderDropzone"] { border-radius: 12px; }
 
-/* Buttons */
-.stButton > button, .stDownloadButton > button {
-  border-radius: 8px; font-weight: 700; border: 1px solid var(--border);
+.app-footer {
+  margin-top: 40px; padding: 18px 4px; border-top: 1px solid var(--border);
+  color: var(--muted); font-size: 0.82rem; display: flex; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px;
 }
-.stButton > button[kind="primary"] { background: var(--accent); color: #06130c; border: none; }
+.app-footer a { color: var(--accent-2); }
 
-/* Dataframes */
-div[data-testid="stDataFrame"] { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-
-/* File uploader */
-div[data-testid="stFileUploaderDropzone"] {
-  background: var(--panel-2); border: 1.5px dashed var(--border); border-radius: 12px;
-}
+iframe { border: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("""
 <div class="app-hero">
+  <div class="eyebrow"><span class="dot"></span>Local analysis tool</div>
   <h1>⚽ Player Tracking &mdash; Analyze a Match</h1>
-  <p>Upload a football clip and get a full tracking report back: every player detected and followed
+  <p class="lead">Upload a football clip and get a full tracking report back: every player detected and followed
   frame by frame, split into teams, turned into heatmaps, movement roles, and the original off-ball
   space-creation score &mdash; the same engine behind the
   <a href="https://emanuele-clc.github.io/player-tracking-movement-analysis/" target="_blank" style="color:var(--accent-2)">public demo dashboard</a>,
   running here on <b>your own footage</b>, saved only on this machine.</p>
-  <div class="how-steps">
-    <div class="how-step"><span class="n">1</span><span class="label">Upload a clip below</span></div>
-    <div class="how-step"><span class="n">2</span><span class="label">Click Analyze &amp; wait for the progress bar</span></div>
-    <div class="how-step"><span class="n">3</span><span class="label">Read the report, download it, or publish it live</span></div>
+  <div class="stepper">
+    <div class="step"><span class="step-num">1</span><span class="step-label">Upload a clip</span><div class="step-sub">.mp4 / .mov / .avi / .mkv</div></div>
+    <div class="step"><span class="step-num">2</span><span class="step-label">Click Analyze</span><div class="step-sub">Progress bar shows every stage live</div></div>
+    <div class="step"><span class="step-num">3</span><span class="step-label">Explore the report</span><div class="step-sub">Download it, or publish it live</div></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -216,6 +217,51 @@ def publish_clip_to_dashboard(clip_id: str):
     ok, out = _run_git(["push"])
     steps.append(("git push", ok, out))
     return steps
+
+
+def prep_embed_html(report_html: str) -> str:
+    """Strip the parts of the public dashboard that don't make sense inside a
+    one-off, single-clip report (the project's own fixed demo video, the
+    generic pipeline explainer, the drone_box-specific validation writeup,
+    the pipeline-status checklist, and the "run it yourself" instructions -
+    you're already running it) so what's embedded here is exactly the same
+    interactive playback/insights/tables experience as the public site, just
+    scoped to this one clip - not a second, different-looking report."""
+    html = report_html
+    for section_id in ("demo", "how", "validation", "status", "run-your-own"):
+        html = re.sub(
+            rf'<section id="{section_id}"[^>]*>.*?</section>\s*', "", html, flags=re.DOTALL,
+        )
+    html = re.sub(r"<nav>.*?</nav>\s*", "", html, count=1, flags=re.DOTALL)
+    html = re.sub(r"<footer>.*?</footer>\s*", "", html, count=1, flags=re.DOTALL)
+    html = _strip_balanced_div(html, "hero")
+    return html
+
+
+def _strip_balanced_div(html: str, class_name: str) -> str:
+    """Remove a <div class="{class_name}">...</div> block, correctly handling
+    nested divs inside it (a naive non-greedy regex would stop at the FIRST
+    inner </div> and mangle the page). Used to drop the marketing hero block
+    from the embedded dashboard - it's about the whole project, not this
+    one clip, and doubles up on the app's own header above it."""
+    marker = f'<div class="{class_name}">'
+    start = html.find(marker)
+    if start == -1:
+        return html
+    depth = 0
+    i = start
+    while i < len(html):
+        if html.startswith("<div", i):
+            depth += 1
+            i += 4
+        elif html.startswith("</div>", i):
+            depth -= 1
+            i += 6
+            if depth == 0:
+                return html[:start] + html[i:]
+        else:
+            i += 1
+    return html  # unbalanced - bail out without touching anything
 
 
 def section_header(eyebrow, title, explain):
@@ -452,53 +498,32 @@ if result:
             st.dataframe(fmt_teams_table(teams_df), use_container_width=True, hide_index=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
-    if mode == "metric":
-        with st.container(border=True):
-            section_header(
-                "Movement analysis", "Heatmaps",
-                "Where each group of players actually spent their time on the pitch, built from every "
-                "tracked position in the clip.",
-            )
-            cols = st.columns(3)
-            labels = [("all", "All players"), ("team_0", "Team 0"), ("team_1", "Team 1")]
-            any_shown = False
-            for col, (key, label) in zip(cols, labels):
-                img_path = PLOTS_DIR / f"heatmap_{key}_{clip_id}.png"
-                if img_path.exists():
-                    col.image(str(img_path), caption=label, use_container_width=True)
-                    any_shown = True
-            if not any_shown:
-                st.caption("No heatmaps generated for this clip yet.")
-        st.markdown("<br>", unsafe_allow_html=True)
+    report_html = None
+    if TEMPLATE_PATH.exists():
+        report_data = build_dashboard_data(clip_filter=[clip_id])
+        report_html = render_html(report_data, TEMPLATE_PATH)
 
-    if roles_df is not None:
-        with st.container(border=True):
-            section_header(
-                "Movement analysis", "Role clustering",
-                "Per-player k-means clustering on average position, how much ground they covered, and "
-                "average speed - grouping players by how they actually moved, not by a lineup sheet. "
-                + ("Speed is real m/s here." if mode == "metric" else
-                   "Positions are schematic (pixel-space fallback), so 'speed' isn't meaningful this run."),
-            )
-            st.dataframe(
-                fmt_roles_table(roles_df.sort_values("role_cluster")),
-                use_container_width=True, hide_index=True,
-            )
+    if report_html:
+        section_header(
+            "Explore the data yourself", "Interactive playback, heatmaps & scores",
+            "The exact same interactive dashboard as the public site - clip playback, heatmap toggle, "
+            "role clustering and the space-creation score - just scoped to this one clip.",
+        )
+        components.html(prep_embed_html(report_html), height=2400, scrolling=True)
         st.markdown("<br>", unsafe_allow_html=True)
-
-    if mode == "metric" and scores_df is not None:
-        with st.container(border=True):
-            section_header(
-                "Original contribution", "Off-ball space-creation score",
-                "Not where a player stood, but what their movement did for their team: a Voronoi-based "
-                "estimate of how much extra space a player's own run opened up for teammates over the "
-                "next couple of seconds. Higher = more space created by moving, not just by having the ball.",
-            )
-            st.dataframe(
-                fmt_scores_table(scores_df.sort_values("space_creation_score", ascending=False)),
-                use_container_width=True, hide_index=True,
-            )
-        st.markdown("<br>", unsafe_allow_html=True)
+    else:
+        # Fallback if the dashboard template is missing for some reason - at
+        # least show the raw tables rather than nothing.
+        if roles_df is not None:
+            with st.container(border=True):
+                section_header("Movement analysis", "Role clustering", "")
+                st.dataframe(fmt_roles_table(roles_df.sort_values("role_cluster")),
+                             use_container_width=True, hide_index=True)
+        if mode == "metric" and scores_df is not None:
+            with st.container(border=True):
+                section_header("Original contribution", "Off-ball space-creation score", "")
+                st.dataframe(fmt_scores_table(scores_df.sort_values("space_creation_score", ascending=False)),
+                             use_container_width=True, hide_index=True)
 
     with st.container(border=True):
         section_header(
@@ -507,9 +532,7 @@ if result:
         )
         dl_col, pub_col = st.columns(2)
         with dl_col:
-            if TEMPLATE_PATH.exists():
-                report_data = build_dashboard_data(clip_filter=[clip_id])
-                report_html = render_html(report_data, TEMPLATE_PATH)
+            if report_html:
                 st.download_button(
                     "Download full interactive report (HTML)",
                     data=report_html, file_name=f"{clip_id}_report.html", mime="text/html",

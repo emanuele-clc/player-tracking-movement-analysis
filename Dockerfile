@@ -12,10 +12,15 @@
 
 FROM python:3.11-slim
 
-# opencv (even the headless build) needs these two shared libs at runtime
+# opencv (even the headless build) needs these two shared libs at runtime;
+# ffmpeg lets detect_and_track.py re-encode the annotated preview video to
+# H.264 after writing it, which is the only codec every browser can play in
+# an HTML5 <video> tag - without it, the video the app renders is a valid
+# file but shows blank in-browser (still fine as a download, just not inline)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -u 1000 user

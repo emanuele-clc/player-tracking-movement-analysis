@@ -38,7 +38,7 @@ This is the recommended way if you just want to try it on your own footage. You 
    ```
    pip install -r requirements.txt
    ```
-   This takes a few minutes the first time - it's downloading the detection model library (PyTorch/YOLO) among other things.
+   This takes a few minutes the first time - it's downloading the detection model library (PyTorch/YOLO) among other things. Also install [ffmpeg](https://ffmpeg.org/download.html) if you don't already have it (on Windows, `winget install ffmpeg`; on Mac, `brew install ffmpeg`) - without it, the tracked video the app produces is a valid file but won't play inside the browser (a codec issue, not a bug in the analysis itself); it'll still work fine as a download.
 3. **Start the app:**
    ```
    streamlit run app.py

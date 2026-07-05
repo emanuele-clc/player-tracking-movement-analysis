@@ -30,6 +30,8 @@ Usage:
         --weights models/football-players-detection.pt
 """
 import argparse
+import shutil
+import subprocess
 from pathlib import Path
 
 import cv2
@@ -79,6 +81,40 @@ def foot_point(xyxy):
     box center, since the box center floats above the ground for a person)."""
     x1, y1, x2, y2 = xyxy[:, 0], xyxy[:, 1], xyxy[:, 2], xyxy[:, 3]
     return np.stack([(x1 + x2) / 2, y2], axis=1)
+
+
+def _make_browser_playable(mp4_path: Path):
+    """cv2.VideoWriter's 'mp4v' fourcc writes MPEG-4 Part 2 video, which most
+    browsers (Chrome/Edge included) refuse to play natively in an HTML5
+    <video> tag - the file is valid and plays fine in VLC, but silently shows
+    blank/nothing in st.video() or a plain <video> element, which is exactly
+    the "the video doesn't show" symptom this fixes. If ffmpeg is on PATH,
+    re-encode in place to H.264/yuv420p, the one combination every browser
+    supports. If ffmpeg isn't installed, leave the original file as-is
+    (still downloadable/playable outside the browser) rather than fail the
+    whole run over a missing optional tool."""
+    if not mp4_path.exists() or shutil.which("ffmpeg") is None:
+        return
+    tmp_path = mp4_path.with_suffix(".h264.mp4")
+    try:
+        proc = subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(mp4_path),
+                "-vcodec", "libx264", "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                str(tmp_path),
+            ],
+            capture_output=True, text=True, timeout=300,
+        )
+        if proc.returncode == 0 and tmp_path.exists() and tmp_path.stat().st_size > 0:
+            tmp_path.replace(mp4_path)
+        else:
+            print(f"Note: ffmpeg re-encode for browser playback failed ({proc.returncode}); "
+                  f"keeping the original file, which may not play in a browser.")
+            tmp_path.unlink(missing_ok=True)
+    except Exception as e:
+        print(f"Note: ffmpeg re-encode skipped ({e}); keeping the original file, "
+              f"which may not play in a browser.")
 
 
 def run(video_path, clip_id, weights, conf, annotate, max_frames):
@@ -158,6 +194,7 @@ def run(video_path, clip_id, weights, conf, annotate, max_frames):
     cap.release()
     if out_writer is not None:
         out_writer.release()
+        _make_browser_playable(PROCESSED_DIR / "annotated" / f"{clip_id}.mp4")
 
     df = pd.DataFrame(rows)
     out_dir = PROCESSED_DIR / "tracklets"

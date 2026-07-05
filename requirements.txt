@@ -1,15 +1,22 @@
 # Data access
 SoccerNet
+roboflow                # download football-specific YOLOv8 weights (player/ball/pitch-keypoint
+                        # detection) from Roboflow Universe - free API key, see data/README.md
 
 # Computer vision: detection + tracking
-ultralytics       # YOLOv8 player/ball detection
+ultralytics             # YOLOv8 player/ball detection (installs torch - use a CPU wheel
+                        # locally if you don't have a GPU: pip install torch --index-url
+                        # https://download.pytorch.org/whl/cpu, then pip install ultralytics)
 opencv-python
-supervision       # ByteTrack wrapper + video annotation utilities
-norfair           # alternative lightweight tracker, useful as a fallback/comparison
+supervision<0.28        # pinned below 0.28: ByteTrack API (update_with_detections) is
+                        # deprecated from 0.28 onward in favor of the separate `trackers`
+                        # package, which isn't stable enough yet to switch to
+norfair                 # alternative lightweight tracker, useful as a fallback/comparison
 
 # Analysis
 numpy
 pandas
+pyarrow                 # parquet read/write for the tracklet/tracking datasets
 scipy
 scikit-learn      # clustering (k-means, GMM, DBSCAN)
 

@@ -1,29 +1,186 @@
 """
-Stage 1: player/ball detection + multi-object tracking on raw broadcast clips.
+Stage 1: player/ball detection + multi-object tracking on a broadcast clip.
 
-Plan:
-- YOLOv8 (ultralytics) fine-tuned or zero-shot on a football-detection checkpoint
-  to detect players, goalkeepers, referees, and the ball per frame.
-- ByteTrack (via the `supervision` package) to link per-frame detections into
-  consistent per-player tracklets across a clip, surviving short occlusions.
-- Output: one row per (frame, track_id) with bounding box + class, written to
-  data/processed/tracklets/<clip_id>.parquet
+Approach:
+- YOLOv8 (ultralytics) for per-frame detection. Model-agnostic on purpose:
+  it reads whatever classes the loaded weights actually expose (via
+  `model.names`) rather than hardcoding ids, so the same script runs against
+  two very different weight sets without code changes:
+    1. stock COCO-pretrained yolov8n.pt (default) - only "person" and
+       "sports ball" are kept, remapped to "person"/"ball". Works
+       immediately on any clip, no setup required.
+    2. a football-fine-tuned checkpoint with classes {ball, goalkeeper,
+       player, referee} (e.g. Roboflow's football-players-detection /
+       football-ball-detection models - see data/README.md for how to get
+       one) - all four classes are kept as-is. Pass it via --weights.
+  Detection quality/tracking stability is materially better with (2): see
+  README.md "Status" section for the measured COCO-baseline numbers this
+  replaces.
+- ByteTrack (via the `supervision` package) links per-frame detections into
+  persistent per-object tracklets across the clip, surviving brief occlusion
+  and missed detections.
+- Output: one row per (frame, tracker_id): timestamp, class, bbox, and the
+  bbox's bottom-center "foot point" in pixel coordinates - the point
+  pitch_calibration.py projects into real-world pitch coordinates.
 
-Not yet implemented — see README.md pipeline table for status.
+Usage:
+    python src/detect_and_track.py --video data/raw/clip.mp4 --clip-id clip01
+    python src/detect_and_track.py --video data/raw/clip.mp4 --clip-id clip01 --annotate
+    python src/detect_and_track.py --video data/raw/clip.mp4 --clip-id clip01 \
+        --weights models/football-players-detection.pt
 """
-
+import argparse
 from pathlib import Path
 
-RAW_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
-OUT_DIR = Path(__file__).resolve().parent.parent / "data" / "processed" / "tracklets"
+import cv2
+import numpy as np
+import pandas as pd
+import supervision as sv
+from ultralytics import YOLO
+
+PROCESSED_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
+
+FOOTBALL_LABELS = {"ball", "goalkeeper", "player", "referee"}
+COCO_KEEP = {"person": "person", "sports ball": "ball"}
+
+
+def resolve_classes(model_names):
+    """Pick which of the loaded model's classes to keep and how to label them,
+    based on what the weights actually expose - not a hardcoded assumption.
+
+    - Football-fine-tuned weights (ball/goalkeeper/player/referee): keep all four.
+    - Generic COCO weights: keep only person + sports ball, renamed to
+      person/ball so downstream code doesn't care which model produced them.
+    - Anything else: keep every class the model has (best effort).
+    """
+    name_to_id = {str(v).lower(): k for k, v in model_names.items()}
+
+    if FOOTBALL_LABELS.issubset(name_to_id.keys()):
+        ids = [name_to_id[label] for label in sorted(FOOTBALL_LABELS)]
+        names = {i: model_names[i] for i in ids}
+        return ids, names
+
+    ids, names = [], {}
+    for coco_name, out_name in COCO_KEEP.items():
+        if coco_name in name_to_id:
+            i = name_to_id[coco_name]
+            ids.append(i)
+            names[i] = out_name
+
+    if ids:
+        return ids, names
+
+    return list(model_names.keys()), dict(model_names)
+
+
+def foot_point(xyxy):
+    """Bottom-center of each bounding box - the pixel point that corresponds
+    to where a player is standing on the pitch (used for homography, not the
+    box center, since the box center floats above the ground for a person)."""
+    x1, y1, x2, y2 = xyxy[:, 0], xyxy[:, 1], xyxy[:, 2], xyxy[:, 3]
+    return np.stack([(x1 + x2) / 2, y2], axis=1)
+
+
+def run(video_path, clip_id, weights, conf, annotate, max_frames):
+    model = YOLO(weights)
+    class_ids, class_name = resolve_classes(model.names)
+    print(f"Using weights '{weights}' -> tracking classes: {list(class_name.values())}")
+
+    tracker = sv.ByteTrack()
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise SystemExit(f"Could not open video: {video_path}")
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+
+    out_writer = None
+    if annotate:
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        out_path = PROCESSED_DIR / "annotated" / f"{clip_id}.mp4"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_writer = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+        box_annotator = sv.BoxAnnotator()
+        label_annotator = sv.LabelAnnotator()
+
+    rows = []
+    frame_idx = 0
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        if max_frames is not None and frame_idx >= max_frames:
+            break
+
+        result = model.predict(
+            frame,
+            classes=class_ids,
+            conf=conf,
+            verbose=False,
+        )[0]
+        detections = sv.Detections.from_ultralytics(result)
+        detections = tracker.update_with_detections(detections)
+
+        if len(detections) > 0:
+            feet = foot_point(detections.xyxy)
+            for i in range(len(detections)):
+                rows.append(
+                    {
+                        "clip_id": clip_id,
+                        "frame": frame_idx,
+                        "timestamp_s": frame_idx / fps,
+                        "track_id": int(detections.tracker_id[i]) if detections.tracker_id is not None else -1,
+                        "class": class_name.get(int(detections.class_id[i]), str(detections.class_id[i])),
+                        "conf": float(detections.confidence[i]),
+                        "x1": float(detections.xyxy[i, 0]),
+                        "y1": float(detections.xyxy[i, 1]),
+                        "x2": float(detections.xyxy[i, 2]),
+                        "y2": float(detections.xyxy[i, 3]),
+                        "foot_x": float(feet[i, 0]),
+                        "foot_y": float(feet[i, 1]),
+                    }
+                )
+
+        if annotate and out_writer is not None:
+            labels = [
+                f"#{tid} {class_name.get(int(cid), cid)}"
+                for tid, cid in zip(
+                    detections.tracker_id if detections.tracker_id is not None else [-1] * len(detections),
+                    detections.class_id,
+                )
+            ]
+            annotated = box_annotator.annotate(frame.copy(), detections)
+            annotated = label_annotator.annotate(annotated, detections, labels=labels)
+            out_writer.write(annotated)
+
+        frame_idx += 1
+
+    cap.release()
+    if out_writer is not None:
+        out_writer.release()
+
+    df = pd.DataFrame(rows)
+    out_dir = PROCESSED_DIR / "tracklets"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{clip_id}.parquet"
+    df.to_parquet(out_path, index=False)
+    print(f"Wrote {len(df)} detection-frames from {frame_idx} frames -> {out_path}")
+    if annotate:
+        print(f"Annotated preview -> {PROCESSED_DIR / 'annotated' / f'{clip_id}.mp4'}")
+    return df
 
 
 def main():
-    raise NotImplementedError(
-        "Detection + tracking pipeline not yet built. "
-        "Planned: ultralytics YOLOv8 + supervision ByteTrack per clip in data/raw, "
-        "writing per-frame track boxes to data/processed/tracklets/."
-    )
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--video", required=True, type=Path, help="Path to a broadcast clip")
+    ap.add_argument("--clip-id", required=True, help="Identifier used for output filenames")
+    ap.add_argument("--weights", default="yolov8n.pt", help="Ultralytics weights (default: stock COCO yolov8n)")
+    ap.add_argument("--conf", type=float, default=0.25, help="Detection confidence threshold")
+    ap.add_argument("--annotate", action="store_true", help="Also write an annotated preview video")
+    ap.add_argument("--max-frames", type=int, default=None, help="Limit frames processed (useful for quick tests)")
+    args = ap.parse_args()
+
+    run(args.video, args.clip_id, args.weights, args.conf, args.annotate, args.max_frames)
 
 
 if __name__ == "__main__":

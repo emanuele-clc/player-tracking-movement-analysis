@@ -24,3 +24,8 @@ scikit-learn      # clustering (k-means, GMM, DBSCAN)
 matplotlib
 plotly
 tqdm
+
+# Local "upload a video, get a report" demo app (app.py) - not needed for the
+# GitHub Pages dashboard, only for running the interactive analysis tool
+# locally: pip install streamlit; streamlit run app.py
+streamlit

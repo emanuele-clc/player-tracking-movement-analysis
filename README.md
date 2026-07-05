@@ -6,6 +6,19 @@ This is a companion piece to [expected-goals-xg-model](https://github.com/emanue
 
 **Status: in progress.** This README documents the finished project's target shape and the build plan. Sections marked `[done]` / `[in progress]` / `[planned]` reflect actual state.
 
+## Analyze your own video (local app)
+
+Beyond the public demo dashboard (below), the repo includes a local tool that runs the whole pipeline on **any video you upload** - the "pitch this to a club" experience:
+
+```
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+This opens a page in your browser: upload a clip, click **Analyze**, and get a full report - tracked video, team classification, heatmaps, role clustering, and the space-creation score - generated live from your own footage, saved locally (nothing leaves your machine), with a one-click download of a standalone HTML report you can send to a club.
+
+Pitch calibration in this flow is fully automatic (`src/auto_calibrate.py`): it looks for a goal-box/penalty-box rectangle across several sampled frames and cross-checks independent pixel-per-metre scale estimates against each other for a numeric confidence score, the same validation style already proven on the `drone_box` clip below - re-run automatically instead of eyeballed by hand. Below a confidence threshold it **honestly falls back to pixel-space analysis** (tracking, team clustering, and heatmap shape stay real; distances/speeds/the space-creation score are skipped, never faked) rather than silently producing bad real-world numbers - see `src/pipeline.py` for the orchestration and fallback logic.
+
 ## Why video, not a tracking feed
 
 Most public "tracking data" football projects start from a CSV of already-extracted (x, y) positions (e.g. Metrica Sports' sample data). That's a data-analysis exercise. This project starts one step earlier — from raw match footage — and builds the extraction layer itself:
@@ -28,12 +41,13 @@ That's the difference between "I analyzed a tracking dataset" and "I built the s
 |---|---|---|
 | 1. Data access | Request SoccerNet credentials, download target clips + calibration | `[in progress]` — script written, request pending |
 | 2. Detection & tracking | YOLOv8 detection per frame (model-agnostic: works with stock COCO weights or a football-fine-tuned model, see `data/README.md`), ByteTrack multi-object tracking into per-player tracklets | `[done]` — validated on a real clip: 3862 detections / 376 frames, 40 track_ids. Honest baseline result with generic COCO weights: several tracks span the whole clip at 100% frame coverage, but many fragment into short 1-5 frame stubs (camera-edge occlusion / re-entry), and the ball is only detected in ~9.6% of frames (COCO's generic "sports ball" class isn't tuned for a small fast-moving football). Swapping in a football-fine-tuned model (`data/README.md`) is the next concrete step to fix both. |
-| 3. Pitch calibration | Homography from broadcast pixel coordinates to real-world pitch coordinates (meters), via `pitch_config.py` (standard 32-keypoint FIFA pitch geometry) + `pitch_calibration.py` (OpenCV homography). Point correspondences come from `detect_pitch_lines.py` (HSV white-line threshold + directional morphology + HoughLinesP + line clustering), not manual pixel-guessing — hand-eyeballing coordinates from a still frame turned out to have +/-150-200px error, too imprecise to trust | `[done]` — validated on a real drone shot of a regulation pitch (`13386302_3840_2160_24fps.mp4`): 8 line-intersection points detected automatically around the goal-box/penalty-box edges, fit with a single homography. Cross-check: 4 independent px/m scale estimates (goal-box width/depth, penalty-box width/depth) agree within 1.4% of each other, and reprojecting the fit points back gives ~8cm mean / 12.6cm max error — strong evidence the frame is a genuine, correctly-proportioned pitch and the calibration is sound. Caught and fixed a real bug in the process: `pitch_config.py`'s penalty-box depth was wrong (20.15m instead of the actual 16.5m) until this validation exposed it. |
+| 3. Pitch calibration | Homography from broadcast pixel coordinates to real-world pitch coordinates (meters). `pitch_config.py` holds the standard 32-keypoint FIFA pitch geometry; `pitch_calibration.py` fits the OpenCV homography. Correspondences can come from `src/auto_calibrate.py` (fully automatic: matches a detected goal-box/penalty-box rectangle to known FIFA dimensions and cross-checks scale estimates for a confidence score - what `app.py`/`pipeline.py` use) or, for the manually-built reference case below, from `detect_pitch_lines.py` (HSV white-line threshold + directional morphology + HoughLinesP + line clustering) — not manual pixel-guessing, which turned out to have +/-150-200px error, too imprecise to trust | `[done]` — validated on a real drone shot of a regulation pitch (`13386302_3840_2160_24fps.mp4`): 8 line-intersection points detected automatically around the goal-box/penalty-box edges, fit with a single homography. Cross-check: 4 independent px/m scale estimates (goal-box width/depth, penalty-box width/depth) agree within 1.4% of each other, and reprojecting the fit points back gives ~8cm mean / 12.6cm max error — strong evidence the frame is a genuine, correctly-proportioned pitch and the calibration is sound. Caught and fixed a real bug in the process: `pitch_config.py`'s penalty-box depth was wrong (20.15m instead of the actual 16.5m) until this validation exposed it. `auto_calibrate.py` independently re-derives the same 8 points from scratch (algorithmically, not by eye) and agrees to within 0.8%. |
 | 4. Team/role assignment | Cluster shirt-color pixels (k-means on jersey crops, HSV median per track, single sequential video pass rather than per-frame seeking for speed) to split detections into team A / team B / referee-or-neutral | `[done]` — validated on the same real smoke-test clip: 36 tracked people split into a 14/18 team split by jersey hue plus 4 flagged outliers (a bright, distinctly different track likely the goalkeeper, plus short/noisy track fragments) — a plausible, sane result on real footage. |
 | 5. Tracking dataset | Join tracklets + team assignment + pitch coordinates into one row-per-(frame, track) dataset (`data/processed/tracking_dataset.parquet`), with per-track speed derived from real elapsed time between frames (not assumed-constant frame spacing) | `[done]` — validated on `drone_box`: 270 rows, 36 tracks. Sanity-checked speeds: players mean 2.4 m/s / max 10.0 m/s (plausible human running range). Honest limitation surfaced by this same check: the ball's max speed comes out only 2.4 m/s, unrealistically slow for a kicked football - almost certainly because fast ball movement causes more ByteTrack ID fragmentation (each fragment's "speed" is computed only within its own short track), not a bug in the speed math itself. A football-specific detection model (steadier ball tracking) is the fix, same one already flagged in stage 2. |
 | 6. Movement analysis | Positional role clustering (k-means on per-track mean position + dispersion + speed) via `cluster_movement.py`; per-player/per-team/all-players heatmaps (rendered to a correctly-scaled pitch + exported as grid JSON for the dashboard) via `generate_heatmaps.py` | `[done]` — both run end-to-end on `drone_box` and produce sane output (heatmap correctly concentrates activity in the penalty-box area the drone camera actually shows). Honest scope limit: a few seconds of one camera angle isn't enough positional variety to separate real footballing roles (winger vs center-back) — that needs a full match's worth of tracking, i.e. still waiting on SoccerNet access. The clustering code itself is real and tested, not a stub. |
 | 7. Original contribution | Off-ball space creation score (`space_creation.py`) — see below | `[done]` (method validated, real ranking pending more data) |
 | 8. Dashboard | Single-file interactive HTML (`docs/index.html`), rendered from `docs/_index_template.html` + `docs/assets/dashboard_data.json` by `src/generate_dashboard_data.py`. Includes a raw-vs-tracked video comparison, a "why it matters" section for recruiters/broadcasters/journalists, an interactive pitch-coordinate playback, static heatmap gallery, role-clustering and space-creation-score tables, and the technical validation stats | `[done]` — live at [emanuele-clc.github.io/player-tracking-movement-analysis](https://emanuele-clc.github.io/player-tracking-movement-analysis/) |
+| 9. Upload-your-own-video app | `app.py` (Streamlit) + `src/pipeline.py` (orchestrator) + `src/auto_calibrate.py` (automatic calibration with a confidence score and an honest pixel-space fallback) - runs every stage above end-to-end on an arbitrary uploaded clip and renders a full local report | `[done]` — see "Analyze your own video" above |
 
 ## Original contribution: off-ball space creation score
 
@@ -53,10 +67,11 @@ Broadcast tracking (vs. professional 25-camera optical tracking systems like Sec
 
 ```
 data/
-  raw/        downloaded video + calibration (gitignored, not committed)
+  raw/        downloaded/uploaded video + calibration (gitignored, not committed)
   processed/  detections, tracks, pitch-coordinate datasets, aggregates (committed)
   README.md   exact SoccerNet access + download steps
-src/          detection, tracking, calibration, clustering, heatmap, dashboard-data scripts
+src/          detection, tracking, calibration, clustering, heatmap, dashboard-data, pipeline scripts
+app.py        local Streamlit app - upload a video, get a full analysis report
 models/       saved detection/clustering model artifacts
 plots/        evaluation and analysis charts
 docs/         index.html — the live dashboard (GitHub Pages), _index_template.html — its source template, + assets/
@@ -65,7 +80,7 @@ notebooks/    exploratory analysis
 
 ## Reproduction
 
-See `data/README.md` for data access, then (once implemented):
+See `data/README.md` for data access, then either run the full pipeline stage by stage:
 
 ```
 pip install -r requirements.txt
@@ -77,6 +92,14 @@ python src/cluster_movement.py
 python src/generate_heatmaps.py
 python src/generate_dashboard_data.py
 ```
+
+or run every stage automatically end-to-end on one video via `src/pipeline.py` (what `app.py` calls):
+
+```
+python src/pipeline.py --video data/raw/your_clip.mp4 --clip-id your_clip
+```
+
+or just use the local app (`streamlit run app.py`) - see "Analyze your own video" above.
 
 ## License
 

@@ -200,6 +200,42 @@
   }
   footer .foot-links { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; }
   footer .foot-links a { color: var(--muted); }
+
+  /* ---------- Scroll reveal ---------- */
+  .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+
+  /* ---------- Hover polish ---------- */
+  .use-card, .tl-step, .val-stat, .video-card { transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease; }
+  .use-card:hover, .tl-step:hover, .val-stat:hover { transform: translateY(-5px); box-shadow: 0 12px 24px rgba(0,0,0,0.35); border-color: #2d3d52; }
+  .video-card:hover { transform: translateY(-3px); box-shadow: 0 16px 32px rgba(0,0,0,0.4); }
+  .hm-gallery figure { transition: transform 0.25s ease, box-shadow 0.25s ease; }
+  .hm-gallery figure:hover { transform: translateY(-5px) scale(1.02); box-shadow: 0 12px 24px rgba(0,0,0,0.35); }
+
+  /* ---------- Hero texture + animated highlight ---------- */
+  .hero { position: relative; overflow: hidden; }
+  .hero::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.6;
+    background-image: repeating-linear-gradient(90deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 64px);
+  }
+  .hero h1 .hl { background-size: 200% auto; animation: shine 6s linear infinite; }
+  @keyframes shine {
+    0% { background-position: 0% center; }
+    100% { background-position: 200% center; }
+  }
+
+  /* ---------- Nav link underline ---------- */
+  .nav-links a { position: relative; }
+  .nav-links a::after {
+    content: ""; position: absolute; left: 0; bottom: -4px; width: 0; height: 2px; background: var(--accent);
+    transition: width 0.25s ease;
+  }
+  .nav-links a:hover::after { width: 100%; }
+
+  /* ---------- Button polish ---------- */
+  .btn { transition: all 0.2s ease; }
+  .btn-primary:hover { box-shadow: 0 6px 20px rgba(53,208,127,0.35); transform: translateY(-2px); }
+  .btn-ghost:hover { transform: translateY(-2px); }
 </style>
 </head>
 <body>
@@ -596,6 +632,37 @@ DATA.space_creation_scores
     tr.innerHTML = `<td>#${s.track_id}</td><td>${s.n_valid_frames}</td><td>${s.space_creation_score.toFixed(1)}</td>`;
     scoresBody.appendChild(tr);
   });
+
+// Scroll-reveal: fade/slide in sections and cards as they enter view
+document.querySelectorAll('section, .use-card, .tl-step, .val-stat, .video-card').forEach(el => el.classList.add('reveal'));
+const revealObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+      revealObserver.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+// Count-up animation for the hero stat numbers
+document.querySelectorAll('.stat .num').forEach(el => {
+  const raw = el.textContent.trim();
+  const match = raw.match(/^(~?)(\d+(?:\.\d+)?)(.*)$/);
+  if (!match) return;
+  const prefix = match[1], target = parseFloat(match[2]), suffix = match[3];
+  const isInt = Number.isInteger(target);
+  const duration = 1100;
+  const start = performance.now();
+  function tick(now) {
+    const progress = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const value = target * eased;
+    el.textContent = prefix + (isInt ? Math.round(value) : value.toFixed(1)) + suffix;
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+});
 </script>
 
 </body>

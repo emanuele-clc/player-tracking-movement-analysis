@@ -84,11 +84,16 @@ def best_auto_calibration(video_path, config=None, n_samples=6, tol=0.15):
     return best
 
 
-def _write_pitch_coords(clip_id, calib, config):
+def _write_pitch_coords(clip_id, calib, config, frame_size=None):
     """Project tracked foot-points into pitch coordinates if calibration was
-    confident enough; otherwise keep raw pixel coordinates (still valid for
-    tracking playback, team clustering, and heatmap *shape* - just not real
-    metres). Returns the mode used: "metric" or "pixel"."""
+    confident enough; otherwise fall back to a SCHEMATIC pixel-space layout
+    (still valid for tracking playback and team clustering shape - just not
+    real metres, distances, or speeds). The fallback is rescaled from raw
+    pixel coordinates into the same 0-length_m x 0-width_m box the metric
+    mode uses (by the source frame's width/height), purely so both modes can
+    share one dashboard canvas - it is NOT a real calibration, just a fit-to-
+    frame relayout, and is always labeled as such downstream (clip_meta.mode
+    == "pixel"). Returns the mode used: "metric" or "pixel"."""
     tracklets_path = PROCESSED_DIR / "tracklets" / f"{clip_id}.parquet"
     df = pd.read_parquet(tracklets_path)
     feet = df[["foot_x", "foot_y"]].to_numpy(dtype=np.float32)
@@ -101,12 +106,31 @@ def _write_pitch_coords(clip_id, calib, config):
         xy = transformer.transform_points(feet)
         df["x_m"], df["y_m"] = xy[:, 0], xy[:, 1]
     else:
-        df["x_m"], df["y_m"] = feet[:, 0], feet[:, 1]
+        frame_w, frame_h = frame_size or (feet[:, 0].max() or 1.0, feet[:, 1].max() or 1.0)
+        df["x_m"] = feet[:, 0] / float(frame_w) * config.pitch_length_m
+        df["y_m"] = feet[:, 1] / float(frame_h) * config.pitch_width_m
 
     out_dir = PROCESSED_DIR / "pitch_coords"
     out_dir.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out_dir / f"{clip_id}.parquet", index=False)
+
+    _record_calibration_mode(clip_id, mode, calib)
     return mode
+
+
+def _record_calibration_mode(clip_id, mode, calib):
+    """Persist this clip's calibration mode/confidence/notes so the dashboard
+    can honestly label whether positions are real pitch metres or a
+    schematic pixel-space fallback - read by generate_dashboard_data.py."""
+    import json
+    meta_path = PROCESSED_DIR / "calibration_mode.json"
+    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    meta[clip_id] = {
+        "mode": mode,
+        "confidence": calib.get("confidence", 0.0),
+        "notes": calib.get("notes", ""),
+    }
+    meta_path.write_text(json.dumps(meta, indent=2))
 
 
 def run_pipeline(video_path, clip_id, weights="yolov8n.pt", max_frames=None,
@@ -141,7 +165,10 @@ def run_pipeline(video_path, clip_id, weights="yolov8n.pt", max_frames=None,
 
     report(0.35, "Looking for a goal box or penalty box to calibrate real-world distances...")
     calib = best_auto_calibration(video_path, config=config)
-    calib_mode = _write_pitch_coords(clip_id, calib, config)
+    cap = cv2.VideoCapture(str(video_path))
+    frame_size = (cap.get(cv2.CAP_PROP_FRAME_WIDTH) or None, cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or None)
+    cap.release()
+    calib_mode = _write_pitch_coords(clip_id, calib, config, frame_size=frame_size)
     calib["mode"] = calib_mode
     if calib_mode == "pixel":
         warnings.append(
@@ -159,6 +186,13 @@ def run_pipeline(video_path, clip_id, weights="yolov8n.pt", max_frames=None,
 
     report(0.65, "Assembling the tracking dataset...")
     build_tracking_dataset.run(clip_id)
+    if calib_mode == "pixel":
+        # Speed computed from schematic (not real) coordinates would look like
+        # real m/s but isn't - null it out rather than show a fabricated number.
+        tds_path = PROCESSED_DIR / "tracking_dataset.parquet"
+        tds = pd.read_parquet(tds_path)
+        tds.loc[tds["clip_id"] == clip_id, "speed_mps"] = np.nan
+        tds.to_parquet(tds_path, index=False)
 
     report(0.78, "Clustering player roles by movement pattern...")
     try:

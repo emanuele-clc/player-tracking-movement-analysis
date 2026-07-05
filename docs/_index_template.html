@@ -329,7 +329,7 @@
       <div class="vcap"><div class="vtitle">&#9889; Pipeline output</div><div class="vsub">YOLOv8 detection + ByteTrack multi-object tracking, live model output</div></div>
     </div>
   </div>
-  <p class="demo-note">Same clip both sides. No manual annotation, no cherry-picked frames &mdash; this is what <code>src/detect_and_track.py</code> produces when you run it. Chosen for dense, easy-to-follow detections; the interactive analysis further down (real-world metres, heatmaps, space-creation score) uses a second, separate clip where the pitch markings allowed full automatic calibration &mdash; see the note in that section.</p>
+  <p class="demo-note">Same clip both sides. No manual annotation, no cherry-picked frames &mdash; this is what <code>src/detect_and_track.py</code> produces when you run it. Chosen for dense, easy-to-follow detections, and used as the default clip in the interactive playback further down too. That clip's pitch markings weren't clear enough for automatic calibration, so its interactive positions are a schematic preview rather than real metres &mdash; switch to the second clip there for full real-world metres, heatmaps, and the space-creation score.</p>
 </section>
 
 <section id="how">
@@ -353,12 +353,15 @@
   <div class="section-head">
     <div class="eyebrow">Explore the data yourself</div>
     <h2>Tracked playback</h2>
-    <p><b>Different clip from the demo video above:</b> this section uses <code id="clipNameLabel"></code>, a drone shot where the pitch markings were clear enough for automatic calibration (see Validation) &mdash; so positions here are real-world metres, not just pixels. Every dot is an actual detected-and-tracked person or ball, nothing simulated.</p>
+    <p>Defaults to <code id="clipNameLabel"></code>, the same dense clip as the demo video above &mdash; every dot is an actual detected-and-tracked person or ball, nothing simulated. Switch clips below to see <code>drone_box</code>, a second real clip whose pitch markings were clear enough for full automatic calibration to real-world metres.</p>
   </div>
-  <div id="clipSelectWrap" class="panel" style="margin-bottom:16px; display:flex; align-items:center; gap:10px; padding:14px 18px;">
+  <div id="clipSelectWrap" class="panel" style="margin-bottom:16px; display:flex; align-items:center; gap:10px; padding:14px 18px; flex-wrap:wrap;">
     <label for="clipSelect" style="font-size:0.85rem; color:var(--muted); font-weight:700;">Clip:</label>
     <select id="clipSelect" style="background:#1a2231; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:0.85rem;"></select>
     <span style="color:var(--muted-2); font-size:0.78rem;">Every clip you publish from the local app (see "Try it yourself" below) shows up here.</span>
+  </div>
+  <div class="panel" id="calibBadgeWrap" style="margin-bottom:16px; padding:12px 18px; font-size:0.85rem; line-height:1.5;">
+    <span id="calibBadge"></span>
   </div>
   <div class="panel layout">
     <div class="pitch-col">
@@ -387,7 +390,7 @@
         <button class="hm-btn" data-key="team:team_1">Heatmap: team 1</button>
         <button class="hm-btn" data-key="team:referee_or_neutral">Heatmap: referee</button>
       </div>
-      <p style="color:var(--muted); font-size:0.85rem;">Toggle a heatmap to see accumulated position density instead of live playback. Heatmaps are dense here because the current test clip is a few seconds of one box-focused camera angle &mdash; see the honest limitations note in Validation.</p>
+      <p style="color:var(--muted); font-size:0.85rem;">Toggle a heatmap to see accumulated position density instead of live playback. Heatmaps need real pitch metres, so they're only available on <code>drone_box</code> (switch clips above) &mdash; they're dense there because that test clip is a few seconds of one box-focused camera angle, see the honest limitations note in Validation.</p>
     </div>
   </div>
 </section>
@@ -396,7 +399,7 @@
   <div class="section-head">
     <div class="eyebrow">Movement analysis</div>
     <h2>Role clustering</h2>
-    <p>Per-track k-means clustering on mean position, positional spread, and mean speed &mdash; grouping tracked players by how they actually moved, not by a lineup sheet. Same calibrated clip as the interactive playback above.</p>
+    <p>Per-track k-means clustering on mean position, positional spread, and mean speed &mdash; grouping tracked players by how they actually moved, not by a lineup sheet. Table follows whichever clip is selected above; mean speed only means real m/s on the metric-calibrated clip (<code>drone_box</code>).</p>
   </div>
   <div class="panel">
     <div class="table-scroll">
@@ -412,7 +415,7 @@
   <div class="section-head">
     <div class="eyebrow">Original contribution</div>
     <h2>Off-ball space creation score</h2>
-    <p>The metric this project was built to produce &mdash; not a chart of where the ball was, but a number for what a player's <em>movement</em> did for their team. Computed on the same calibrated clip as the playback and heatmaps above.</p>
+    <p>The metric this project was built to produce &mdash; not a chart of where the ball was, but a number for what a player's <em>movement</em> did for their team. Needs real pitch metres, so it's only computed on <code>drone_box</code>, the metric-calibrated clip (switch clips above).</p>
   </div>
   <div class="panel">
     <div class="explain">
@@ -512,9 +515,30 @@ streamlit run app.py<br>
 <script>
 const DATA = /*__DASHBOARD_DATA_JSON__*/;
 
-let clipId = DATA.clips.includes('drone_box') ? 'drone_box' : DATA.clips[0];
+// Default to the densest, most convincing clip - the same one used in the
+// hero demo video above - so first impressions here match that video
+// instead of a much sparser example. Any clip is still browsable via the
+// selector; drone_box is kept as the one with a full metric calibration.
+let clipId = DATA.clips.includes('smoketest') ? 'smoketest' : (DATA.clips.includes('drone_box') ? 'drone_box' : DATA.clips[0]);
 let clip = DATA.tracking_by_clip[clipId];
 document.getElementById('clipNameLabel').textContent = clipId;
+
+function currentClipMeta() {
+  return (DATA.clip_meta && DATA.clip_meta[clipId]) || { mode: 'metric', confidence: null, notes: '' };
+}
+
+function updateCalibBadge() {
+  const el = document.getElementById('calibBadge');
+  if (!el) return;
+  const meta = currentClipMeta();
+  if (meta.mode === 'metric') {
+    el.innerHTML = '&#10003; Real-world calibration &mdash; positions are true pitch metres.';
+    el.style.color = 'var(--accent, #35d07f)';
+  } else {
+    el.innerHTML = '&#9888; Pixel-space preview &mdash; no confident automatic pitch-line match on this clip, so positions are shown schematically (relative layout only), not real metres. Speeds, heatmaps and the space-creation score are skipped rather than faked.';
+    el.style.color = '#f2b544';
+  }
+}
 
 const canvas = document.getElementById('pitchCanvas');
 const ctx = canvas.getContext('2d');
@@ -737,12 +761,14 @@ if (clipSelect) {
     document.querySelector('.hm-btn[data-key="none"]').classList.add('active');
     populateTables();
     updateInsights();
+    updateCalibBadge();
     render();
   });
 }
 
 populateTables();
 updateInsights();
+updateCalibBadge();
 render();
 
 // Scroll-reveal: fade/slide in sections and cards as they enter view

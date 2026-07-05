@@ -47,6 +47,9 @@ def build_dashboard_data(clip_filter=None):
     heatmap_grids_path = PROCESSED_DIR / "heatmap_grids.json"
     heatmap_grids = json.loads(heatmap_grids_path.read_text()) if heatmap_grids_path.exists() else {}
 
+    calib_mode_path = PROCESSED_DIR / "calibration_mode.json"
+    clip_meta = json.loads(calib_mode_path.read_text()) if calib_mode_path.exists() else {}
+
     if clip_filter is not None:
         clip_filter = set(clip_filter)
         if not tracking.empty:
@@ -56,8 +59,14 @@ def build_dashboard_data(clip_filter=None):
         if not scores.empty:
             scores = scores[scores["clip_id"].isin(clip_filter)]
         heatmap_grids = {k: v for k, v in heatmap_grids.items() if k in clip_filter}
+        clip_meta = {k: v for k, v in clip_meta.items() if k in clip_filter}
 
     clips = sorted(tracking["clip_id"].unique().tolist()) if not tracking.empty else []
+    # Any clip without an explicit entry (e.g. older runs from before this field
+    # existed) is assumed metric - that was the only mode this project produced
+    # before the automatic-calibration/honest-fallback feature was added.
+    for clip_id in clips:
+        clip_meta.setdefault(clip_id, {"mode": "metric", "confidence": None, "notes": ""})
 
     frames_by_clip = {}
     for clip_id in clips:
@@ -89,6 +98,7 @@ def build_dashboard_data(clip_filter=None):
             "edges": config.edges,
         },
         "clips": clips,
+        "clip_meta": clip_meta,
         "tracking_by_clip": frames_by_clip,
         "heatmap_grids": heatmap_grids,
         "role_clusters": roles.to_dict(orient="records") if not roles.empty else [],

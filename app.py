@@ -15,7 +15,9 @@ Run it with:
 Then open the local URL Streamlit prints (usually http://localhost:8501),
 upload a clip, and click Analyze.
 """
+import json
 import re
+import subprocess
 import sys
 import time
 import uuid
@@ -74,6 +76,54 @@ if "clip_id" not in st.session_state:
 def _sanitize(name: str) -> str:
     base = re.sub(r"[^a-zA-Z0-9_-]+", "_", Path(name).stem).strip("_").lower()
     return base or "clip"
+
+
+def _run_git(args):
+    """Run a git command in the repo root, returning (ok, output). Never
+    raises - git/network problems are shown to the user, not crashed on."""
+    try:
+        proc = subprocess.run(
+            ["git", *args], cwd=str(ROOT), capture_output=True, text=True, timeout=120,
+        )
+        output = (proc.stdout or "") + (proc.stderr or "")
+        return proc.returncode == 0, output.strip()
+    except FileNotFoundError:
+        return False, "git is not installed or not on PATH."
+    except subprocess.TimeoutExpired:
+        return False, "git command timed out (check your network / GitHub credentials)."
+
+
+def publish_clip_to_dashboard(clip_id: str):
+    """Fold this clip into the public dashboard (docs/index.html) alongside
+    every other clip already analyzed, then commit and push - so the site
+    updates automatically from this same local app, no manual git commands.
+    Only works if this checkout has push access to its 'origin' remote
+    (i.e. you're running this on your own machine, logged into your own
+    GitHub account - exactly the normal way to run this app)."""
+    steps = []
+
+    data = build_dashboard_data(clip_filter=None)  # every clip, not just this one
+    dashboard_json_path = ROOT / "docs" / "assets" / "dashboard_data.json"
+    dashboard_json_path.parent.mkdir(parents=True, exist_ok=True)
+    dashboard_json_path.write_text(json.dumps(data))
+    if TEMPLATE_PATH.exists():
+        html = render_html(data, TEMPLATE_PATH)
+        (ROOT / "docs" / "index.html").write_text(html, encoding="utf-8")
+    steps.append(("Regenerated docs/index.html with every analyzed clip", True, ""))
+
+    ok, out = _run_git(["add", "-A"])
+    steps.append(("git add -A", ok, out))
+    if not ok:
+        return steps
+
+    ok, out = _run_git(["commit", "-m", f"Add {clip_id} analysis to dashboard"])
+    steps.append((f'git commit -m "Add {clip_id} analysis to dashboard"', ok, out))
+    if not ok and "nothing to commit" not in out.lower():
+        return steps
+
+    ok, out = _run_git(["push"])
+    steps.append(("git push", ok, out))
+    return steps
 
 
 with st.sidebar:
@@ -206,15 +256,44 @@ if result:
                 )
 
     st.divider()
-    if TEMPLATE_PATH.exists():
-        data = build_dashboard_data(clip_filter=[clip_id])
-        html = render_html(data, TEMPLATE_PATH)
-        st.download_button(
-            "⬇ Download full interactive report (HTML)",
-            data=html, file_name=f"{clip_id}_report.html", mime="text/html",
+    dl_col, pub_col = st.columns(2)
+    with dl_col:
+        if TEMPLATE_PATH.exists():
+            report_data = build_dashboard_data(clip_filter=[clip_id])
+            report_html = render_html(report_data, TEMPLATE_PATH)
+            st.download_button(
+                "⬇ Download full interactive report (HTML)",
+                data=report_html, file_name=f"{clip_id}_report.html", mime="text/html",
+                use_container_width=True,
+            )
+    with pub_col:
+        publish_clicked = st.button(
+            "🚀 Publish to public dashboard", use_container_width=True,
+            help="Regenerates docs/index.html with this clip added, then runs "
+                 "git add / commit / push - only works if this checkout can push "
+                 "to its own GitHub remote.",
         )
+
+    if publish_clicked:
+        with st.status("Publishing...", expanded=True) as status_box:
+            steps = publish_clip_to_dashboard(clip_id)
+            all_ok = True
+            for label, ok, out in steps:
+                if ok:
+                    st.write(f"✅ {label}")
+                else:
+                    all_ok = False
+                    st.write(f"❌ {label}")
+                if out:
+                    st.code(out, language="text")
+            if all_ok:
+                status_box.update(label="Published - check the live site in a minute.", state="complete")
+            else:
+                status_box.update(label="Publish failed at the step above - see the output for why.", state="error")
+
     st.caption(
         "This report and all intermediate data are saved locally under data/processed/ - "
-        "nothing is uploaded anywhere. Re-run with more frames (turn off Quick preview) for a "
-        "full analysis once you're happy with a quick look."
+        "nothing is uploaded anywhere unless you click Publish, which just runs the same "
+        "git commands you'd type yourself. Re-run with more frames (turn off Quick preview) "
+        "for a full analysis once you're happy with a quick look."
     )

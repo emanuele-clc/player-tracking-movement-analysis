@@ -279,7 +279,6 @@
     <div class="brand"><span class="dot"></span> Player Tracking &amp; Movement Analysis</div>
     <div class="nav-links">
       <a href="#demo">Live demo</a>
-      <a href="#why">Why it matters</a>
       <a href="#how">Pipeline</a>
       <a href="#playback">Explore data</a>
       <a href="#metric">Original metric</a>
@@ -330,37 +329,7 @@
       <div class="vcap"><div class="vtitle">&#9889; Pipeline output</div><div class="vsub">YOLOv8 detection + ByteTrack multi-object tracking, live model output</div></div>
     </div>
   </div>
-  <p class="demo-note">Same clip both sides. No manual annotation, no cherry-picked frames &mdash; this is what <code>src/detect_and_track.py</code> produces when you run it.</p>
-</section>
-
-<section id="why">
-  <div class="section-head">
-    <div class="eyebrow">Why it matters</div>
-    <h2>Built to be useful, not just a demo</h2>
-    <p>Tracking data like this normally comes from six-figure optical tracking installations. This project shows the same data can be pulled straight out of ordinary broadcast or drone video &mdash; which changes who can afford to use it.</p>
-  </div>
-  <div class="card-grid">
-    <div class="use-card">
-      <span class="icon">&#127919;</span>
-      <h3>Recruitment &amp; scouting</h3>
-      <p>Turn any match footage a club already has &mdash; not just top-tier broadcast feeds &mdash; into positional data: how far a player roams, how much space their runs create, without buying a tracking-data contract.</p>
-    </div>
-    <div class="use-card">
-      <span class="icon">&#128225;</span>
-      <h3>Broadcast &amp; media companies</h3>
-      <p>Automatic heatmaps, team shape, and player movement graphics generated directly from existing camera feeds &mdash; no dedicated tracking hardware in the stadium required.</p>
-    </div>
-    <div class="use-card">
-      <span class="icon">&#128240;</span>
-      <h3>Sports journalism</h3>
-      <p>Data-driven storytelling &mdash; "which player actually created the most space off the ball this match" &mdash; backed by a real, inspectable pipeline instead of a black-box vendor number.</p>
-    </div>
-    <div class="use-card">
-      <span class="icon">&#128202;</span>
-      <h3>Analytics &amp; research teams</h3>
-      <p>An open, auditable alternative to closed tracking vendors: every stage from pixels to metric is code you can read, rerun, and validate yourself.</p>
-    </div>
-  </div>
+  <p class="demo-note">Same clip both sides. No manual annotation, no cherry-picked frames &mdash; this is what <code>src/detect_and_track.py</code> produces when you run it. Chosen for dense, easy-to-follow detections; the interactive analysis further down (real-world metres, heatmaps, space-creation score) uses a second, separate clip where the pitch markings allowed full automatic calibration &mdash; see the note in that section.</p>
 </section>
 
 <section id="how">
@@ -384,7 +353,12 @@
   <div class="section-head">
     <div class="eyebrow">Explore the data yourself</div>
     <h2>Tracked playback</h2>
-    <p>Real tracked positions from <code id="clipNameLabel"></code>, projected into real-world pitch coordinates via the homography calibration described in Validation below. Every dot is an actual detected-and-tracked person or ball &mdash; nothing here is simulated.</p>
+    <p><b>Different clip from the demo video above:</b> this section uses <code id="clipNameLabel"></code>, a drone shot where the pitch markings were clear enough for automatic calibration (see Validation) &mdash; so positions here are real-world metres, not just pixels. Every dot is an actual detected-and-tracked person or ball, nothing simulated.</p>
+  </div>
+  <div id="clipSelectWrap" class="panel" style="margin-bottom:16px; display:flex; align-items:center; gap:10px; padding:14px 18px;">
+    <label for="clipSelect" style="font-size:0.85rem; color:var(--muted); font-weight:700;">Clip:</label>
+    <select id="clipSelect" style="background:#1a2231; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:0.85rem;"></select>
+    <span style="color:var(--muted-2); font-size:0.78rem;">Every clip you publish from the local app (see "Try it yourself" below) shows up here.</span>
   </div>
   <div class="panel layout">
     <div class="pitch-col">
@@ -402,6 +376,10 @@
       </div>
     </div>
     <div class="side-col">
+      <div class="panel" id="insightsPanel" style="padding:14px 16px; margin-bottom:14px;">
+        <h3 style="margin:0 0 8px; font-size:0.95rem;">&#9889; Auto-generated match insights</h3>
+        <ul id="insightsList" style="margin:0; padding-left:18px; font-size:0.86rem; color:var(--text); line-height:1.8;"></ul>
+      </div>
       <div class="heatmap-toggle">
         <button class="hm-btn active" data-key="none">&#9654; Live playback</button>
         <button class="hm-btn" data-key="all">Heatmap: all</button>
@@ -414,24 +392,11 @@
   </div>
 </section>
 
-<section id="heatmaps">
-  <div class="section-head">
-    <div class="eyebrow">Positional heatmaps</div>
-    <h2>Where every team actually spent its time</h2>
-    <p>Static renders of the same data as the interactive toggle above, straight out of <code>src/generate_heatmaps.py</code>.</p>
-  </div>
-  <div class="hm-gallery">
-    <figure><img src="assets/heatmap_all_drone_box.png" loading="lazy" alt="Heatmap of all players"><figcaption>All players</figcaption></figure>
-    <figure><img src="assets/heatmap_team_0_drone_box.png" loading="lazy" alt="Heatmap of team 0"><figcaption>Team 0</figcaption></figure>
-    <figure><img src="assets/heatmap_team_1_drone_box.png" loading="lazy" alt="Heatmap of team 1"><figcaption>Team 1</figcaption></figure>
-  </div>
-</section>
-
 <section id="roles">
   <div class="section-head">
     <div class="eyebrow">Movement analysis</div>
     <h2>Role clustering</h2>
-    <p>Per-track k-means clustering on mean position, positional spread, and mean speed &mdash; grouping tracked players by how they actually moved, not by a lineup sheet.</p>
+    <p>Per-track k-means clustering on mean position, positional spread, and mean speed &mdash; grouping tracked players by how they actually moved, not by a lineup sheet. Same calibrated clip as the interactive playback above.</p>
   </div>
   <div class="panel">
     <div class="table-scroll">
@@ -447,7 +412,7 @@
   <div class="section-head">
     <div class="eyebrow">Original contribution</div>
     <h2>Off-ball space creation score</h2>
-    <p>The metric this project was built to produce &mdash; not a chart of where the ball was, but a number for what a player's <em>movement</em> did for their team.</p>
+    <p>The metric this project was built to produce &mdash; not a chart of where the ball was, but a number for what a player's <em>movement</em> did for their team. Computed on the same calibrated clip as the playback and heatmaps above.</p>
   </div>
   <div class="panel">
     <div class="explain">
@@ -469,7 +434,7 @@
   <div class="section-head">
     <div class="eyebrow">Technical validation</div>
     <h2>How we know this is real, not a demo trick</h2>
-    <p>Every number below comes from cross-checking the pipeline against known, fixed facts about a real football pitch &mdash; not from trusting the model output blindly.</p>
+    <p>Every number below comes from cross-checking the pipeline against known, fixed facts about a real football pitch &mdash; not from trusting the model output blindly. This is what makes the calibrated clip used in the sections above trustworthy enough to report real metres and speeds from.</p>
   </div>
   <div class="panel">
     <div class="val-grid">
@@ -516,25 +481,18 @@
   <div class="section-head">
     <div class="eyebrow">Try it yourself</div>
     <h2>Run this on your own match</h2>
-    <p>This page is a fixed showcase of one validated clip. GitHub Pages is static, so it can't run the detection model on a video you upload &mdash; but the full pipeline runs locally on your own machine, on any footage you have.</p>
+    <p>This page is a fixed showcase of one validated clip. GitHub Pages is static, so it can't run the detection model on a video you upload &mdash; but anyone can download this project and run the full pipeline locally, on their own machine, on any footage they have. No GitHub account needed for this part.</p>
   </div>
-  <div class="panel run-grid">
-    <div>
-      <p style="margin-top:0; font-size:0.92rem;">A local app (<code>app.py</code>) wraps the entire pipeline: upload a clip, click Analyze, get a full report &mdash; tracked video, team clustering, heatmaps, role clustering, and the space-creation score &mdash; generated from your own footage, saved on your machine, nothing uploaded anywhere.</p>
-      <div class="code-block"><span class="cmt"># clone, install, run</span><br>
+  <div class="panel">
+    <p style="margin-top:0; font-size:0.92rem;">A local app (<code>app.py</code>) wraps the entire pipeline: upload a clip, click Analyze, get a full report &mdash; tracked video, team clustering, heatmaps, role clustering, and the space-creation score &mdash; generated from your own footage, saved on your machine, nothing uploaded anywhere.</p>
+    <div class="code-block"><span class="cmt"># download the code (no account needed - it's a public repo)</span><br>
 git clone https://github.com/emanuele-clc/player-tracking-movement-analysis<br>
+<span class="cmt"># or just download the ZIP from the green "Code" button on GitHub</span><br>
 cd player-tracking-movement-analysis<br>
 pip install -r requirements.txt<br>
 streamlit run app.py<br>
 <br><span class="cmt"># opens a local page in your browser -&gt; upload a clip -&gt; Analyze</span></div>
-      <p style="color:var(--muted); font-size:0.85rem;">Pitch calibration in that flow is fully automatic and self-reports a confidence score (<code>src/auto_calibrate.py</code>) &mdash; on clips where it isn't confident enough, it honestly falls back to pixel-space tracking instead of guessing.</p>
-    </div>
-    <div>
-      <p style="margin-top:0; font-size:0.92rem;"><b>Want your analysis to show up on a page like this one?</b> Once you're happy with a local result, one command folds it into the same dashboard template this site uses:</p>
-      <div class="code-block">python src/generate_dashboard_data.py --clip-id your_clip<br>
-git add -A &amp;&amp; git commit -m "Add my match" &amp;&amp; git push</div>
-      <p style="color:var(--muted); font-size:0.85rem;">That's the exact process used to publish the demo clip above &mdash; see the <a href="https://github.com/emanuele-clc/player-tracking-movement-analysis#readme" target="_blank" rel="noopener">README</a> for the full reproduction steps.</p>
-    </div>
+    <p style="color:var(--muted); font-size:0.85rem;">Pitch calibration in that flow is fully automatic and self-reports a confidence score (<code>src/auto_calibrate.py</code>) &mdash; on clips where it isn't confident enough, it honestly falls back to pixel-space tracking instead of guessing. Full reproduction steps in the <a href="https://github.com/emanuele-clc/player-tracking-movement-analysis#readme" target="_blank" rel="noopener">README</a>.</p>
   </div>
 </section>
 
@@ -554,8 +512,8 @@ git add -A &amp;&amp; git commit -m "Add my match" &amp;&amp; git push</div>
 <script>
 const DATA = /*__DASHBOARD_DATA_JSON__*/;
 
-const clipId = DATA.clips[0];
-const clip = DATA.tracking_by_clip[clipId];
+let clipId = DATA.clips.includes('drone_box') ? 'drone_box' : DATA.clips[0];
+let clip = DATA.tracking_by_clip[clipId];
 document.getElementById('clipNameLabel').textContent = clipId;
 
 const canvas = document.getElementById('pitchCanvas');
@@ -631,7 +589,7 @@ function drawHeatmap(key) {
   }
 }
 
-const frameIndices = Object.keys(clip.frames).map(Number).sort((a,b) => a-b);
+let frameIndices = Object.keys(clip.frames).map(Number).sort((a,b) => a-b);
 const slider = document.getElementById('frameSlider');
 slider.max = frameIndices.length - 1;
 const frameLabel = document.getElementById('frameLabel');
@@ -675,34 +633,117 @@ document.querySelectorAll('.hm-btn').forEach(btn => {
   });
 });
 
-render();
-
-// Role clusters table
+// Role clusters + space-creation tables, scoped to the currently selected clip
 const clusterColors = ['#4fa8ff', '#ff6b57', '#f2c744', '#9d6bff', '#3fd68b'];
 const rolesBody = document.querySelector('#rolesTable tbody');
-DATA.role_clusters
-  .slice()
-  .sort((a,b) => a.role_cluster - b.role_cluster)
-  .forEach(r => {
-    const tr = document.createElement('tr');
-    const spread = Math.sqrt(r.std_x*r.std_x + r.std_y*r.std_y).toFixed(2);
-    tr.innerHTML = `<td>#${r.track_id}</td><td>${r.team}</td><td>${r.n_frames}</td>` +
-      `<td>${r.mean_x.toFixed(2)}</td><td>${r.mean_y.toFixed(2)}</td><td>${spread}</td>` +
-      `<td>${r.mean_speed.toFixed(2)}</td>` +
-      `<td><span class="role-chip" style="background:${clusterColors[r.role_cluster % clusterColors.length]}"></span>${r.role_cluster}</td>`;
-    rolesBody.appendChild(tr);
-  });
-
-// Space creation scores table
 const scoresBody = document.querySelector('#scoresTable tbody');
-DATA.space_creation_scores
-  .slice()
-  .sort((a,b) => b.space_creation_score - a.space_creation_score)
-  .forEach(s => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>#${s.track_id}</td><td>${s.n_valid_frames}</td><td>${s.space_creation_score.toFixed(1)}</td>`;
-    scoresBody.appendChild(tr);
+
+function populateTables() {
+  rolesBody.innerHTML = '';
+  DATA.role_clusters
+    .filter(r => r.clip_id === clipId)
+    .slice()
+    .sort((a,b) => a.role_cluster - b.role_cluster)
+    .forEach(r => {
+      const tr = document.createElement('tr');
+      const spread = Math.sqrt(r.std_x*r.std_x + r.std_y*r.std_y).toFixed(2);
+      tr.innerHTML = `<td>#${r.track_id}</td><td>${r.team}</td><td>${r.n_frames}</td>` +
+        `<td>${r.mean_x.toFixed(2)}</td><td>${r.mean_y.toFixed(2)}</td><td>${spread}</td>` +
+        `<td>${r.mean_speed.toFixed(2)}</td>` +
+        `<td><span class="role-chip" style="background:${clusterColors[r.role_cluster % clusterColors.length]}"></span>${r.role_cluster}</td>`;
+      rolesBody.appendChild(tr);
+    });
+
+  scoresBody.innerHTML = '';
+  DATA.space_creation_scores
+    .filter(s => s.clip_id === clipId)
+    .slice()
+    .sort((a,b) => b.space_creation_score - a.space_creation_score)
+    .forEach(s => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>#${s.track_id}</td><td>${s.n_valid_frames}</td><td>${s.space_creation_score.toFixed(1)}</td>`;
+      scoresBody.appendChild(tr);
+    });
+}
+
+// Auto-generated plain-language insights, recomputed per selected clip
+function updateInsights() {
+  const list = document.getElementById('insightsList');
+  if (!list) return;
+  list.innerHTML = '';
+  const items = [];
+
+  const hm = DATA.heatmap_grids[clipId];
+  if (hm) {
+    const sumGrid = g => g ? g.flat().reduce((a,b) => a+b, 0) : 0;
+    const t0 = sumGrid(hm.grids['team:team_0']);
+    const t1 = sumGrid(hm.grids['team:team_1']);
+    if (t0 + t1 > 0) {
+      const pct0 = Math.round(100 * t0 / (t0 + t1));
+      const leaderPct = pct0 >= 50 ? pct0 : 100 - pct0;
+      const leader = pct0 >= 50 ? 'Team 0' : 'Team 1';
+      items.push(`<b>${leader}</b> covered more of the tracked area this clip (${leaderPct}% of combined team positions).`);
+    }
+  }
+
+  const roles = DATA.role_clusters.filter(r => r.clip_id === clipId);
+  if (roles.length) {
+    const fastest = roles.slice().sort((a,b) => b.mean_speed - a.mean_speed)[0];
+    items.push(`Track <b>#${fastest.track_id}</b> (${fastest.team}) covered the most ground on average &mdash; ${fastest.mean_speed.toFixed(1)} m/s mean speed.`);
+  }
+
+  const scores = DATA.space_creation_scores.filter(s => s.clip_id === clipId);
+  if (scores.length) {
+    const top = scores.slice().sort((a,b) => b.space_creation_score - a.space_creation_score)[0];
+    items.push(`Track <b>#${top.track_id}</b> ranks highest on the off-ball space-creation score &mdash; their movement opened the most room for teammates.`);
+  }
+
+  if (items.length === 0) {
+    items.push('Not enough data in this clip yet for automatic insights.');
+  }
+  items.forEach(text => {
+    const li = document.createElement('li');
+    li.innerHTML = text;
+    list.appendChild(li);
   });
+}
+
+// Clip selector
+const clipSelect = document.getElementById('clipSelect');
+const clipSelectWrap = document.getElementById('clipSelectWrap');
+if (clipSelect) {
+  DATA.clips.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    if (c === clipId) opt.selected = true;
+    clipSelect.appendChild(opt);
+  });
+  if (DATA.clips.length <= 1 && clipSelectWrap) {
+    clipSelectWrap.style.display = 'none';
+  }
+  clipSelect.addEventListener('change', () => {
+    clipId = clipSelect.value;
+    clip = DATA.tracking_by_clip[clipId];
+    document.getElementById('clipNameLabel').textContent = clipId;
+    frameIndices = Object.keys(clip.frames).map(Number).sort((a,b) => a-b);
+    slider.max = frameIndices.length - 1;
+    sliderPos = 0;
+    slider.value = 0;
+    playing = false;
+    document.getElementById('playBtn').textContent = '\u25B6 Play';
+    currentMode = 'none';
+    document.querySelectorAll('.hm-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.hm-btn[data-key="none"]').classList.add('active');
+    populateTables();
+    updateInsights();
+    render();
+  });
+}
+
+populateTables();
+updateInsights();
+render();
 
 // Scroll-reveal: fade/slide in sections and cards as they enter view
 document.querySelectorAll('section, .use-card, .tl-step, .val-stat, .video-card').forEach(el => el.classList.add('reveal'));

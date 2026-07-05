@@ -1,13 +1,18 @@
+# CPU-only PyTorch wheel index - keeps installs light and avoids pulling CUDA
+# drivers on machines/hosts without a GPU (e.g. Hugging Face Spaces free CPU
+# tier, or a laptop). pip still prefers the default index when a matching
+# wheel exists there, so this is safe to leave in even with a GPU present.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 # Data access
 SoccerNet
 roboflow                # download football-specific YOLOv8 weights (player/ball/pitch-keypoint
                         # detection) from Roboflow Universe - free API key, see data/README.md
 
 # Computer vision: detection + tracking
-ultralytics             # YOLOv8 player/ball detection (installs torch - use a CPU wheel
-                        # locally if you don't have a GPU: pip install torch --index-url
-                        # https://download.pytorch.org/whl/cpu, then pip install ultralytics)
-opencv-python
+ultralytics             # YOLOv8 player/ball detection (installs torch - the --extra-index-url
+                        # above steers this to the CPU wheel automatically)
+opencv-python-headless   # headless build - no GUI/X11 deps, works on servers/Spaces; same API
 supervision<0.28        # pinned below 0.28: ByteTrack API (update_with_detections) is
                         # deprecated from 0.28 onward in favor of the separate `trackers`
                         # package, which isn't stable enough yet to switch to
@@ -25,7 +30,7 @@ matplotlib
 plotly
 tqdm
 
-# Local "upload a video, get a report" demo app (app.py) - not needed for the
-# GitHub Pages dashboard, only for running the interactive analysis tool
-# locally: pip install streamlit; streamlit run app.py
+# Local/hosted "upload a video, get a report" demo app (app.py) - not needed
+# for the GitHub Pages dashboard, only for running or hosting the interactive
+# analysis tool: pip install streamlit; streamlit run app.py
 streamlit

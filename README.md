@@ -1,3 +1,14 @@
+---
+title: Player Tracking & Movement Analysis
+emoji: ⚽
+colorFrom: green
+colorTo: blue
+sdk: streamlit
+sdk_version: "1.58.0"
+app_file: app.py
+pinned: false
+---
+
 # Player Tracking & Movement Analysis
 
 Computer-vision pipeline that turns **real broadcast football video** into player tracking data, then mines that data for movement patterns that matter: role clustering, off-ball space creation, pressing structure, and player-specific heatmaps.
@@ -6,16 +17,28 @@ This is a companion piece to [expected-goals-xg-model](https://github.com/emanue
 
 **Status: in progress.** This README documents the finished project's target shape and the build plan. Sections marked `[done]` / `[in progress]` / `[planned]` reflect actual state.
 
-## Analyze your own video (local app)
+> The YAML block above is Hugging Face Spaces metadata (ignored everywhere else, including GitHub) - it's what lets this same repo be deployed as a live, hosted version of `app.py`. See "Run it online" below.
 
-Beyond the public demo dashboard (below), the repo includes a local tool that runs the whole pipeline on **any video you upload** - the "pitch this to a club" experience:
+## Analyze your own video
+
+### Option A: run it online (hosted, no install)
+
+If this repo is deployed as a Hugging Face Space (see the badge on the repo, or deploy your own copy in a couple of clicks from [huggingface.co/new-space](https://huggingface.co/new-space) by pointing it at this GitHub repo, SDK: Streamlit), you get the same upload-and-analyze app in a browser tab, no install. CPU-only inference on the free tier, so expect it to be slower than running locally - fine for a quick demo, not for a full match.
+
+### Option B: run it locally (fastest, your own hardware)
+
+The repo includes a local tool that runs the whole pipeline on **any video you upload** - the "pitch this to a club" experience. Works for anyone, no GitHub account needed - just clone or download the code:
 
 ```
+git clone https://github.com/emanuele-clc/player-tracking-movement-analysis
+cd player-tracking-movement-analysis
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
 This opens a page in your browser: upload a clip, click **Analyze**, and get a full report - tracked video, team classification, heatmaps, role clustering, and the space-creation score - generated live from your own footage, saved locally (nothing leaves your machine), with a one-click download of a standalone HTML report you can send to a club.
+
+If you have push access to your own copy of this repo (i.e. you're the maintainer, or you've forked it), a **"Publish to public dashboard"** button in the app regenerates `docs/index.html` to include your new clip and runs `git add` / `commit` / `push` for you - the local analysis shows up on your live GitHub Pages site automatically, no manual git commands. The public dashboard has a clip selector, so every clip anyone publishes this way becomes browsable there, not just the original demo clip.
 
 Pitch calibration in this flow is fully automatic (`src/auto_calibrate.py`): it looks for a goal-box/penalty-box rectangle across several sampled frames and cross-checks independent pixel-per-metre scale estimates against each other for a numeric confidence score, the same validation style already proven on the `drone_box` clip below - re-run automatically instead of eyeballed by hand. Below a confidence threshold it **honestly falls back to pixel-space analysis** (tracking, team clustering, and heatmap shape stay real; distances/speeds/the space-creation score are skipped, never faked) rather than silently producing bad real-world numbers - see `src/pipeline.py` for the orchestration and fallback logic.
 
@@ -46,8 +69,8 @@ That's the difference between "I analyzed a tracking dataset" and "I built the s
 | 5. Tracking dataset | Join tracklets + team assignment + pitch coordinates into one row-per-(frame, track) dataset (`data/processed/tracking_dataset.parquet`), with per-track speed derived from real elapsed time between frames (not assumed-constant frame spacing) | `[done]` — validated on `drone_box`: 270 rows, 36 tracks. Sanity-checked speeds: players mean 2.4 m/s / max 10.0 m/s (plausible human running range). Honest limitation surfaced by this same check: the ball's max speed comes out only 2.4 m/s, unrealistically slow for a kicked football - almost certainly because fast ball movement causes more ByteTrack ID fragmentation (each fragment's "speed" is computed only within its own short track), not a bug in the speed math itself. A football-specific detection model (steadier ball tracking) is the fix, same one already flagged in stage 2. |
 | 6. Movement analysis | Positional role clustering (k-means on per-track mean position + dispersion + speed) via `cluster_movement.py`; per-player/per-team/all-players heatmaps (rendered to a correctly-scaled pitch + exported as grid JSON for the dashboard) via `generate_heatmaps.py` | `[done]` — both run end-to-end on `drone_box` and produce sane output (heatmap correctly concentrates activity in the penalty-box area the drone camera actually shows). Honest scope limit: a few seconds of one camera angle isn't enough positional variety to separate real footballing roles (winger vs center-back) — that needs a full match's worth of tracking, i.e. still waiting on SoccerNet access. The clustering code itself is real and tested, not a stub. |
 | 7. Original contribution | Off-ball space creation score (`space_creation.py`) — see below | `[done]` (method validated, real ranking pending more data) |
-| 8. Dashboard | Single-file interactive HTML (`docs/index.html`), rendered from `docs/_index_template.html` + `docs/assets/dashboard_data.json` by `src/generate_dashboard_data.py`. Includes a raw-vs-tracked video comparison, a "why it matters" section for recruiters/broadcasters/journalists, an interactive pitch-coordinate playback, static heatmap gallery, role-clustering and space-creation-score tables, and the technical validation stats | `[done]` — live at [emanuele-clc.github.io/player-tracking-movement-analysis](https://emanuele-clc.github.io/player-tracking-movement-analysis/) |
-| 9. Upload-your-own-video app | `app.py` (Streamlit) + `src/pipeline.py` (orchestrator) + `src/auto_calibrate.py` (automatic calibration with a confidence score and an honest pixel-space fallback) - runs every stage above end-to-end on an arbitrary uploaded clip and renders a full local report | `[done]` — see "Analyze your own video" above |
+| 8. Dashboard | Single-file interactive HTML (`docs/index.html`), rendered from `docs/_index_template.html` + `docs/assets/dashboard_data.json` by `src/generate_dashboard_data.py`. Includes a raw-vs-tracked video comparison, an interactive pitch-coordinate playback with a clip selector (every published clip is browsable), auto-generated plain-language match insights, role-clustering and space-creation-score tables, and the technical validation stats (with a live chart of the 4 scale-estimate cross-check) | `[done]` — live at [emanuele-clc.github.io/player-tracking-movement-analysis](https://emanuele-clc.github.io/player-tracking-movement-analysis/) |
+| 9. Upload-your-own-video app | `app.py` (Streamlit) + `src/pipeline.py` (orchestrator) + `src/auto_calibrate.py` (automatic calibration with a confidence score and an honest pixel-space fallback) - runs every stage above end-to-end on an arbitrary uploaded clip, renders a full local report, and can publish straight to the public dashboard with one click | `[done]` — see "Analyze your own video" above |
 
 ## Original contribution: off-ball space creation score
 
@@ -71,7 +94,7 @@ data/
   processed/  detections, tracks, pitch-coordinate datasets, aggregates (committed)
   README.md   exact SoccerNet access + download steps
 src/          detection, tracking, calibration, clustering, heatmap, dashboard-data, pipeline scripts
-app.py        local Streamlit app - upload a video, get a full analysis report
+app.py        local/hosted Streamlit app - upload a video, get a full analysis report, publish it live
 models/       saved detection/clustering model artifacts
 plots/        evaluation and analysis charts
 docs/         index.html — the live dashboard (GitHub Pages), _index_template.html — its source template, + assets/
@@ -99,7 +122,7 @@ or run every stage automatically end-to-end on one video via `src/pipeline.py` (
 python src/pipeline.py --video data/raw/your_clip.mp4 --clip-id your_clip
 ```
 
-or just use the local app (`streamlit run app.py`) - see "Analyze your own video" above.
+or just use the app (`streamlit run app.py`, or the hosted version) - see "Analyze your own video" above.
 
 ## License
 

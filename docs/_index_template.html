@@ -329,7 +329,7 @@
       <div class="vcap"><div class="vtitle">&#9889; Pipeline output</div><div class="vsub">YOLOv8 detection + ByteTrack multi-object tracking, live model output</div></div>
     </div>
   </div>
-  <p class="demo-note">Same clip both sides. No manual annotation, no cherry-picked frames &mdash; this is what <code>src/detect_and_track.py</code> produces when you run it. Chosen for dense, easy-to-follow detections, and used as the default clip in the interactive playback further down too. That clip's pitch markings weren't clear enough for automatic calibration, so its interactive positions are a schematic preview rather than real metres &mdash; switch to the second clip there for full real-world metres, heatmaps, and the space-creation score.</p>
+  <p class="demo-note">Same clip both sides. No manual annotation, no cherry-picked frames &mdash; this is what <code>src/detect_and_track.py</code> produces when you run it. Chosen for dense, easy-to-follow detections, and used as the default clip in the interactive playback further down too. That clip's pitch markings weren't clear enough for automatic calibration, so its interactive positions are drawn on a plain camera-frame box rather than a real pitch outline (we don't know how much of the pitch this camera actually shows) &mdash; switch to the second clip there for full real-world metres, heatmaps, and the space-creation score.</p>
 </section>
 
 <section id="how">
@@ -535,7 +535,7 @@ function updateCalibBadge() {
     el.innerHTML = '&#10003; Real-world calibration &mdash; positions are true pitch metres.';
     el.style.color = 'var(--accent, #35d07f)';
   } else {
-    el.innerHTML = '&#9888; Pixel-space preview &mdash; no confident automatic pitch-line match on this clip, so positions are shown schematically (relative layout only), not real metres. Speeds, heatmaps and the space-creation score are skipped rather than faked.';
+    el.innerHTML = '&#9888; Camera-frame preview &mdash; no confident automatic pitch-line match on this clip, so positions below are relative to the video frame only, drawn on a plain box (not a pitch outline). We don\'t know how much of the real pitch this camera shows - could be the whole thing, could be one small corner. Speeds, heatmaps and the space-creation score are skipped rather than faked.';
     el.style.color = '#f2b544';
   }
 }
@@ -550,18 +550,47 @@ function toPx(x, y) {
 }
 
 function drawPitch() {
-  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--pitch-green');
+  const isMetric = currentClipMeta().mode === 'metric';
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-2') || '#141a24';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--pitch-line');
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(...toPx(0,0), L*scale, W*scale);
-  DATA.pitch.edges.forEach(([i1, i2]) => {
-    const p1 = DATA.pitch.vertices_m[i1-1];
-    const p2 = DATA.pitch.vertices_m[i2-1];
-    const [x1,y1] = toPx(p1[0], p1[1]);
-    const [x2,y2] = toPx(p2[0], p2[1]);
-    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
-  });
+
+  if (isMetric) {
+    // Real, calibrated clip: draw the actual FIFA pitch outline + markings -
+    // positions here are true pitch metres, so a real pitch diagram is honest.
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--pitch-green');
+    ctx.fillRect(...toPx(0,0), L*scale, W*scale);
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--pitch-line');
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(...toPx(0,0), L*scale, W*scale);
+    DATA.pitch.edges.forEach(([i1, i2]) => {
+      const p1 = DATA.pitch.vertices_m[i1-1];
+      const p2 = DATA.pitch.vertices_m[i2-1];
+      const [x1,y1] = toPx(p1[0], p1[1]);
+      const [x2,y2] = toPx(p2[0], p2[1]);
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    });
+  } else {
+    // No confident automatic calibration for this clip - we have no idea how
+    // much of the real pitch the camera actually shows (could be the whole
+    // thing, could be one small corner). Drawing a full FIFA pitch outline
+    // here would falsely imply "these players covered the whole pitch", so
+    // this deliberately draws a neutral, unmarked box instead - just "the
+    // camera's own frame", nothing pitch-shaped claimed about it.
+    ctx.fillStyle = '#1a2130';
+    ctx.fillRect(...toPx(0,0), L*scale, W*scale);
+    ctx.strokeStyle = '#3a4558';
+    ctx.setLineDash([6, 5]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(...toPx(0,0), L*scale, W*scale);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#7a879c';
+    ctx.font = '600 13px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Camera frame only - not a real pitch view', canvas.width / 2, canvas.height / 2 - 8);
+    ctx.font = '400 11px Inter, sans-serif';
+    ctx.fillText('Real pitch coverage for this clip is unknown (could be the whole pitch, could be one small area)', canvas.width / 2, canvas.height / 2 + 12);
+    ctx.textAlign = 'left';
+  }
 }
 
 const teamColor = {

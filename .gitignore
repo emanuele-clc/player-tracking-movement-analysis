@@ -4,6 +4,9 @@ data/raw/
 *.avi
 *.mov
 
+# ...except the small, compressed preview clips embedded in the dashboard
+!docs/assets/*.mp4
+
 # Python
 __pycache__/
 *.pyc

@@ -33,7 +33,7 @@ That's the difference between "I analyzed a tracking dataset" and "I built the s
 | 5. Tracking dataset | Join tracklets + team assignment + pitch coordinates into one row-per-(frame, track) dataset (`data/processed/tracking_dataset.parquet`), with per-track speed derived from real elapsed time between frames (not assumed-constant frame spacing) | `[done]` — validated on `drone_box`: 270 rows, 36 tracks. Sanity-checked speeds: players mean 2.4 m/s / max 10.0 m/s (plausible human running range). Honest limitation surfaced by this same check: the ball's max speed comes out only 2.4 m/s, unrealistically slow for a kicked football - almost certainly because fast ball movement causes more ByteTrack ID fragmentation (each fragment's "speed" is computed only within its own short track), not a bug in the speed math itself. A football-specific detection model (steadier ball tracking) is the fix, same one already flagged in stage 2. |
 | 6. Movement analysis | Positional role clustering (k-means on per-track mean position + dispersion + speed) via `cluster_movement.py`; per-player/per-team/all-players heatmaps (rendered to a correctly-scaled pitch + exported as grid JSON for the dashboard) via `generate_heatmaps.py` | `[done]` — both run end-to-end on `drone_box` and produce sane output (heatmap correctly concentrates activity in the penalty-box area the drone camera actually shows). Honest scope limit: a few seconds of one camera angle isn't enough positional variety to separate real footballing roles (winger vs center-back) — that needs a full match's worth of tracking, i.e. still waiting on SoccerNet access. The clustering code itself is real and tested, not a stub. |
 | 7. Original contribution | Off-ball space creation score (`space_creation.py`) — see below | `[done]` (method validated, real ranking pending more data) |
-| 8. Dashboard | Single-file interactive HTML (`docs/index.html`), same self-contained style as the xG project | `[planned]` |
+| 8. Dashboard | Single-file interactive HTML (`docs/index.html`), rendered from `docs/_index_template.html` + `docs/assets/dashboard_data.json` by `src/generate_dashboard_data.py`. Includes a raw-vs-tracked video comparison, a "why it matters" section for recruiters/broadcasters/journalists, an interactive pitch-coordinate playback, static heatmap gallery, role-clustering and space-creation-score tables, and the technical validation stats | `[done]` — live at [emanuele-clc.github.io/player-tracking-movement-analysis](https://emanuele-clc.github.io/player-tracking-movement-analysis/) |
 
 ## Original contribution: off-ball space creation score
 
@@ -59,7 +59,7 @@ data/
 src/          detection, tracking, calibration, clustering, heatmap, dashboard-data scripts
 models/       saved detection/clustering model artifacts
 plots/        evaluation and analysis charts
-docs/         index.html — the live dashboard (GitHub Pages) + assets/
+docs/         index.html — the live dashboard (GitHub Pages), _index_template.html — its source template, + assets/
 notebooks/    exploratory analysis
 ```
 

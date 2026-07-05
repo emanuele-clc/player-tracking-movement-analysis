@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Player Tracking &amp; Movement Analysis — Real Football Video, Real Tracking Data</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A computer-vision pipeline that turns real football video into player tracking data: detection, multi-object tracking, automatic pitch calibration, team clustering, heatmaps, and an original off-ball space-creation metric.">
+<style>
+  :root {
+    --pitch-green: #14532d;
+    --pitch-line: #eef7ef;
+    --bg: #0a0e14;
+    --bg-alt: #0d1420;
+    --panel: #111926;
+    --panel-2: #0f1621;
+    --border: #212b3a;
+    --text: #e7edf5;
+    --muted: #90a0b7;
+    --muted-2: #6b7a90;
+    --team0: #4fa8ff;
+    --team1: #ff6b57;
+    --ref: #d7c34a;
+    --ball: #ffffff;
+    --accent: #35d07f;
+    --accent-dim: #1a3d2c;
+    --gold: #f2b544;
+    --warn-bg: #2a2210;
+    --warn-border: #6b551a;
+    --warn-text: #f2d477;
+    --grad1: #0a3d2e;
+    --grad2: #0a1f3d;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+  }
+  a { color: #6ab0f3; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code { background: #1c2433; padding: 1px 6px; border-radius: 4px; font-size: 0.88em; }
+
+  /* ---------- Nav ---------- */
+  nav {
+    position: sticky; top: 0; z-index: 50; background: rgba(10,14,20,0.88); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    max-width: 1180px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center;
+    justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  .brand { font-weight: 700; font-size: 0.95rem; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+  .nav-links { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.85rem; }
+  .nav-links a { color: var(--muted); }
+  .nav-links a:hover { color: var(--text); text-decoration: none; }
+  .nav-cta {
+    background: var(--accent); color: #04240b; padding: 7px 14px; border-radius: 7px; font-weight: 700;
+    font-size: 0.82rem; white-space: nowrap;
+  }
+  .nav-cta:hover { text-decoration: none; filter: brightness(1.08); }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    background:
+      radial-gradient(1100px 500px at 15% -10%, rgba(53,208,127,0.16), transparent 60%),
+      radial-gradient(900px 500px at 90% 0%, rgba(79,168,255,0.14), transparent 60%),
+      linear-gradient(180deg, var(--grad2) 0%, var(--bg) 65%);
+    border-bottom: 1px solid var(--border);
+  }
+  .hero-inner { max-width: 1180px; margin: 0 auto; padding: 56px 24px 40px; }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px; background: var(--accent-dim); color: var(--accent);
+    padding: 4px 11px; border-radius: 20px; font-size: 0.76rem; font-weight: 700;
+    border: 1px solid #205036; letter-spacing: 0.2px;
+  }
+  .badge.gold { background: #332405; color: var(--gold); border-color: #5c460f; }
+  .hero h1 {
+    margin: 0 0 14px; font-size: clamp(1.9rem, 4vw, 3rem); line-height: 1.12; font-weight: 800;
+    max-width: 900px; letter-spacing: -0.5px;
+  }
+  .hero h1 .hl { background: linear-gradient(90deg, var(--accent), #7ee3ac); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p.lead { color: var(--muted); font-size: 1.08rem; max-width: 680px; margin: 0 0 26px; }
+  .hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 34px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 8px;
+    font-weight: 700; font-size: 0.9rem; border: 1px solid var(--border); cursor: pointer;
+  }
+  .btn-primary { background: var(--accent); color: #04240b; border-color: var(--accent); }
+  .btn-primary:hover { text-decoration: none; filter: brightness(1.08); }
+  .btn-ghost { background: transparent; color: var(--text); }
+  .btn-ghost:hover { text-decoration: none; background: #161f2c; }
+
+  .stat-row { display: flex; gap: 0; flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 22px; }
+  .stat { flex: 1 1 150px; padding: 6px 22px 6px 0; border-right: 1px solid var(--border); }
+  .stat:last-child { border-right: none; }
+  .stat .num { font-size: 1.5rem; font-weight: 800; color: var(--text); }
+  .stat .lbl { font-size: 0.78rem; color: var(--muted-2); margin-top: 2px; }
+
+  /* ---------- Layout ---------- */
+  main { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  section { margin-top: 62px; scroll-margin-top: 70px; }
+  .section-head { max-width: 760px; margin-bottom: 26px; }
+  .eyebrow { color: var(--accent); font-size: 0.78rem; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 8px; }
+  h2 { font-size: 1.65rem; margin: 0 0 10px; letter-spacing: -0.3px; }
+  .section-head p { color: var(--muted); margin: 0; font-size: 0.97rem; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 22px; }
+
+  /* ---------- Video comparison ---------- */
+  .video-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 760px) { .video-compare { grid-template-columns: 1fr; } }
+  .video-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .video-card video { width: 100%; display: block; background: #000; }
+  .video-card .vcap { padding: 12px 16px; }
+  .video-card .vcap .vtitle { font-weight: 700; font-size: 0.92rem; margin-bottom: 3px; }
+  .video-card .vcap .vsub { color: var(--muted); font-size: 0.8rem; }
+  .video-card.tracked .vtitle { color: var(--accent); }
+  .demo-note { margin-top: 14px; color: var(--muted-2); font-size: 0.83rem; }
+
+  /* ---------- Why-it-matters cards ---------- */
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .use-card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .use-card .icon { font-size: 1.5rem; margin-bottom: 10px; display: block; }
+  .use-card h3 { margin: 0 0 8px; font-size: 1.02rem; }
+  .use-card p { margin: 0; color: var(--muted); font-size: 0.87rem; }
+
+  /* ---------- Pipeline timeline ---------- */
+  .tl-step { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 14px; position: relative; }
+  .tl-step .tl-num {
+    width: 26px; height: 26px; border-radius: 50%; background: var(--accent-dim); color: var(--accent);
+    display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.8rem; margin-bottom: 10px;
+    border: 1px solid #205036;
+  }
+  .tl-step h4 { margin: 0 0 6px; font-size: 0.88rem; }
+  .tl-step p { margin: 0; font-size: 0.78rem; color: var(--muted); }
+  .tl-grid-wrap { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; }
+  .tl-grid-wrap .tl-step { flex: 0 0 190px; }
+
+  /* ---------- Playback panel ---------- */
+  .layout { display: flex; gap: 24px; flex-wrap: wrap; }
+  .layout .pitch-col { flex: 0 0 auto; }
+  .layout .side-col { flex: 1 1 280px; min-width: 260px; }
+  #pitchCanvas { background: var(--pitch-green); border-radius: 8px; display: block; max-width: 100%; }
+  .controls { margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  button {
+    background: #1a2231; color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 14px; cursor: pointer; font-size: 0.83rem;
+  }
+  button:hover { background: #232d40; }
+  button.active { background: var(--accent); color: #04240b; border-color: var(--accent); }
+  input[type=range] { flex: 1; min-width: 140px; accent-color: var(--accent); }
+  .legend { display: flex; gap: 14px; margin-top: 12px; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); }
+  .legend span.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+  .heatmap-toggle { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+
+  /* ---------- Tables ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.4px; }
+  tr:hover td { background: #161f2c; }
+  .role-chip { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+  .table-scroll { max-height: 360px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .table-scroll table { border: none; }
+  .table-scroll thead th { position: sticky; top: 0; background: var(--panel); }
+
+  /* ---------- Heatmap gallery ---------- */
+  .hm-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  .hm-gallery figure { margin: 0; background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .hm-gallery img { width: 100%; display: block; }
+  .hm-gallery figcaption { padding: 8px 12px; font-size: 0.78rem; color: var(--muted); }
+
+  /* ---------- Callouts ---------- */
+  .caveat {
+    background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 10px;
+    padding: 14px 18px; font-size: 0.85rem; color: var(--warn-text); margin-bottom: 16px;
+  }
+  .caveat strong { color: #ffe08a; }
+  .explain {
+    background: var(--panel-2); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 0 10px 10px 0; padding: 14px 18px; font-size: 0.9rem; color: var(--text); margin-bottom: 16px;
+  }
+
+  /* ---------- Validation stats ---------- */
+  .val-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .val-stat { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .val-stat .v-num { font-size: 1.3rem; font-weight: 800; color: var(--accent); }
+  .val-stat .v-lbl { font-size: 0.76rem; color: var(--muted); margin-top: 3px; }
+  .val-img { width: 100%; border-radius: 10px; border: 1px solid var(--border); margin-top: 10px; }
+
+  /* ---------- Stage list ---------- */
+  .stage-list { list-style: none; padding: 0; margin: 0; font-size: 0.88rem; }
+  .stage-list li { padding: 9px 0; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: baseline; }
+  .stage-list li:last-child { border-bottom: none; }
+  .stage-list .chk { color: var(--accent); font-weight: 800; flex: 0 0 auto; }
+
+  footer {
+    max-width: 1180px; margin: 70px auto 0; padding: 26px 24px 50px; color: var(--muted-2); font-size: 0.82rem;
+    border-top: 1px solid var(--border);
+  }
+  footer .foot-links { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; }
+  footer .foot-links a { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <div class="brand"><span class="dot"></span> Player Tracking &amp; Movement Analysis</div>
+    <div class="nav-links">
+      <a href="#demo">Live demo</a>
+      <a href="#why">Why it matters</a>
+      <a href="#how">Pipeline</a>
+      <a href="#playback">Explore data</a>
+      <a href="#metric">Original metric</a>
+      <a href="#validation">Validation</a>
+    </div>
+    <a class="nav-cta" href="https://github.com/emanuele-clc/player-tracking-movement-analysis" target="_blank" rel="noopener">View on GitHub &rarr;</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <div class="hero-inner">
+    <div class="badges">
+      <span class="badge">&#9679; Real match video</span>
+      <span class="badge">&#9679; Real detections, not simulated</span>
+      <span class="badge gold">&#9733; Original metric</span>
+    </div>
+    <h1>Turning raw football footage into <span class="hl">tracking data a scout, a broadcaster, or a newsroom could actually use.</span></h1>
+    <p class="lead">A from-scratch computer-vision pipeline that watches real match video and produces what expensive optical tracking systems produce: every player's position, every frame, in real-world pitch coordinates &mdash; plus an original off-ball movement metric no public dataset ships with.</p>
+    <div class="hero-ctas">
+      <a class="btn btn-primary" href="#demo">&#9654; Watch it work</a>
+      <a class="btn btn-ghost" href="https://github.com/emanuele-clc/player-tracking-movement-analysis#readme" target="_blank" rel="noopener">Read the methodology</a>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><div class="num">188</div><div class="lbl">frames tracked end-to-end</div></div>
+      <div class="stat"><div class="num">36</div><div class="lbl">unique players/officials tracked</div></div>
+      <div class="stat"><div class="num">~8cm</div><div class="lbl">mean pitch-calibration error</div></div>
+      <div class="stat"><div class="num">7</div><div class="lbl">pipeline stages, video &rarr; insight</div></div>
+    </div>
+  </div>
+</div>
+
+<main>
+
+<section id="demo">
+  <div class="section-head">
+    <div class="eyebrow">See it in action</div>
+    <h2>From raw drone footage to tracked players, automatically</h2>
+    <p>Both clips below are the same real match video. The left one is untouched. The right one is the direct, unedited output of this repository's detection + tracking code &mdash; every box and ID is a real model prediction, frame by frame.</p>
+  </div>
+  <div class="video-compare">
+    <div class="video-card">
+      <video src="assets/raw_preview.mp4" autoplay muted loop playsinline controls></video>
+      <div class="vcap"><div class="vtitle">Raw footage</div><div class="vsub">Unmodified source clip</div></div>
+    </div>
+    <div class="video-card tracked">
+      <video src="assets/tracking_preview.mp4" poster="assets/tracking_poster.jpg" autoplay muted loop playsinline controls></video>
+      <div class="vcap"><div class="vtitle">&#9889; Pipeline output</div><div class="vsub">YOLOv8 detection + ByteTrack multi-object tracking, live model output</div></div>
+    </div>
+  </div>
+  <p class="demo-note">Same clip both sides. No manual annotation, no cherry-picked frames &mdash; this is what <code>src/detect_and_track.py</code> produces when you run it.</p>
+</section>
+
+<section id="why">
+  <div class="section-head">
+    <div class="eyebrow">Why it matters</div>
+    <h2>Built to be useful, not just a demo</h2>
+    <p>Tracking data like this normally comes from six-figure optical tracking installations. This project shows the same data can be pulled straight out of ordinary broadcast or drone video &mdash; which changes who can afford to use it.</p>
+  </div>
+  <div class="card-grid">
+    <div class="use-card">
+      <span class="icon">&#127919;</span>
+      <h3>Recruitment &amp; scouting</h3>
+      <p>Turn any match footage a club already has &mdash; not just top-tier broadcast feeds &mdash; into positional data: how far a player roams, how much space their runs create, without buying a tracking-data contract.</p>
+    </div>
+    <div class="use-card">
+      <span class="icon">&#128225;</span>
+      <h3>Broadcast &amp; media companies</h3>
+      <p>Automatic heatmaps, team shape, and player movement graphics generated directly from existing camera feeds &mdash; no dedicated tracking hardware in the stadium required.</p>
+    </div>
+    <div class="use-card">
+      <span class="icon">&#128240;</span>
+      <h3>Sports journalism</h3>
+      <p>Data-driven storytelling &mdash; "which player actually created the most space off the ball this match" &mdash; backed by a real, inspectable pipeline instead of a black-box vendor number.</p>
+    </div>
+    <div class="use-card">
+      <span class="icon">&#128202;</span>
+      <h3>Analytics &amp; research teams</h3>
+      <p>An open, auditable alternative to closed tracking vendors: every stage from pixels to metric is code you can read, rerun, and validate yourself.</p>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="section-head">
+    <div class="eyebrow">How it works</div>
+    <h2>Seven stages, video in &mdash; insight out</h2>
+    <p>Each stage is a real, independently-runnable script (see <code>src/</code>), validated on real footage rather than synthetic placeholders.</p>
+  </div>
+  <div class="tl-grid-wrap">
+    <div class="tl-step"><div class="tl-num">1</div><h4>Detection &amp; tracking</h4><p>YOLOv8 finds every player/ball per frame; ByteTrack links detections into persistent tracks across occlusion.</p></div>
+    <div class="tl-step"><div class="tl-num">2</div><h4>Pitch calibration</h4><p>Automatic line detection (HSV + Hough transform) feeds a homography &mdash; pixels &rarr; real-world metres, no manual clicking.</p></div>
+    <div class="tl-step"><div class="tl-num">3</div><h4>Team ID</h4><p>K-means clustering on jersey colour splits every track into team A / team B / referee.</p></div>
+    <div class="tl-step"><div class="tl-num">4</div><h4>Tracking dataset</h4><p>Detections + teams + pitch coordinates joined into one dataset, with real elapsed-time speed per track.</p></div>
+    <div class="tl-step"><div class="tl-num">5</div><h4>Movement analysis</h4><p>Positional role clustering and per-player/team heatmaps from real tracked positions.</p></div>
+    <div class="tl-step"><div class="tl-num">6</div><h4>Original metric</h4><p>A Voronoi-based off-ball space-creation score &mdash; see below.</p></div>
+    <div class="tl-step"><div class="tl-num">7</div><h4>Dashboard</h4><p>This page &mdash; a single self-contained file, no backend, no database.</p></div>
+  </div>
+</section>
+
+<section id="playback">
+  <div class="section-head">
+    <div class="eyebrow">Explore the data yourself</div>
+    <h2>Tracked playback</h2>
+    <p>Real tracked positions from <code id="clipNameLabel"></code>, projected into real-world pitch coordinates via the homography calibration described in Validation below. Every dot is an actual detected-and-tracked person or ball &mdash; nothing here is simulated.</p>
+  </div>
+  <div class="panel layout">
+    <div class="pitch-col">
+      <canvas id="pitchCanvas" width="900" height="600"></canvas>
+      <div class="controls">
+        <button id="playBtn">&#9654; Play</button>
+        <input type="range" id="frameSlider" min="0" max="0" value="0">
+        <span id="frameLabel" style="color:var(--muted); font-size:0.82rem; min-width:120px;"></span>
+      </div>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--team0)"></span>Team 0</span>
+        <span><span class="dot" style="background:var(--team1)"></span>Team 1</span>
+        <span><span class="dot" style="background:var(--ref)"></span>Referee / neutral</span>
+        <span><span class="dot" style="background:var(--ball)"></span>Ball</span>
+      </div>
+    </div>
+    <div class="side-col">
+      <div class="heatmap-toggle">
+        <button class="hm-btn active" data-key="none">&#9654; Live playback</button>
+        <button class="hm-btn" data-key="all">Heatmap: all</button>
+        <button class="hm-btn" data-key="team:team_0">Heatmap: team 0</button>
+        <button class="hm-btn" data-key="team:team_1">Heatmap: team 1</button>
+        <button class="hm-btn" data-key="team:referee_or_neutral">Heatmap: referee</button>
+      </div>
+      <p style="color:var(--muted); font-size:0.85rem;">Toggle a heatmap to see accumulated position density instead of live playback. Heatmaps are dense here because the current test clip is a few seconds of one box-focused camera angle &mdash; see the honest limitations note in Validation.</p>
+    </div>
+  </div>
+</section>
+
+<section id="heatmaps">
+  <div class="section-head">
+    <div class="eyebrow">Positional heatmaps</div>
+    <h2>Where every team actually spent its time</h2>
+    <p>Static renders of the same data as the interactive toggle above, straight out of <code>src/generate_heatmaps.py</code>.</p>
+  </div>
+  <div class="hm-gallery">
+    <figure><img src="assets/heatmap_all_drone_box.png" loading="lazy" alt="Heatmap of all players"><figcaption>All players</figcaption></figure>
+    <figure><img src="assets/heatmap_team_0_drone_box.png" loading="lazy" alt="Heatmap of team 0"><figcaption>Team 0</figcaption></figure>
+    <figure><img src="assets/heatmap_team_1_drone_box.png" loading="lazy" alt="Heatmap of team 1"><figcaption>Team 1</figcaption></figure>
+  </div>
+</section>
+
+<section id="roles">
+  <div class="section-head">
+    <div class="eyebrow">Movement analysis</div>
+    <h2>Role clustering</h2>
+    <p>Per-track k-means clustering on mean position, positional spread, and mean speed &mdash; grouping tracked players by how they actually moved, not by a lineup sheet.</p>
+  </div>
+  <div class="panel">
+    <div class="table-scroll">
+      <table id="rolesTable">
+        <thead><tr><th>Track</th><th>Team</th><th>Frames</th><th>Mean X (m)</th><th>Mean Y (m)</th><th>Spread (m)</th><th>Mean speed (m/s)</th><th>Cluster</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="metric">
+  <div class="section-head">
+    <div class="eyebrow">Original contribution</div>
+    <h2>Off-ball space creation score</h2>
+    <p>The metric this project was built to produce &mdash; not a chart of where the ball was, but a number for what a player's <em>movement</em> did for their team.</p>
+  </div>
+  <div class="panel">
+    <div class="explain">
+      <strong>In plain terms:</strong> most tracking data can tell you where a player stood. This metric asks a sharper question &mdash; when a player moves, does it open up space for a teammate? Using every visible player's position each frame, a grid-based approximation of a Voronoi diagram assigns every patch of pitch to whichever player is closest to it. Summing a team's controlled patches, minus one player's own, gives that player's "teammate space." The score then correlates a player's own movement in a frame with how much that teammate space grows over the next couple of seconds &mdash; rewarding exactly the kind of intelligent decoy run or space-clearing movement that a heatmap or touch map cannot see, because those only show where a player <em>was</em>, never what their movement <em>created</em> for someone else.
+    </div>
+    <div class="caveat">
+      <strong>Honest caveat, shown rather than hidden:</strong> the method itself is verified correct &mdash; a synthetic 4-players-in-4-quadrants self-test gives 0.00% error against the exact expected area split (run <code>python src/space_creation.py --self-test</code> yourself). But the scores below, computed on the current real test clip, are numerically unstable &mdash; some values exceed 10,000 m&sup2; per metre of displacement. That's an honest symptom of too little data (only 13 of 114 frames have both teams visible at once in this box-focused clip), not a bug in the method. A meaningful, stable player ranking needs a full match's worth of tracking data.
+    </div>
+    <div class="table-scroll">
+      <table id="scoresTable">
+        <thead><tr><th>Track</th><th>Valid frames</th><th>Space-creation score (m&sup2;/m)</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="validation">
+  <div class="section-head">
+    <div class="eyebrow">Technical validation</div>
+    <h2>How we know this is real, not a demo trick</h2>
+    <p>Every number below comes from cross-checking the pipeline against known, fixed facts about a real football pitch &mdash; not from trusting the model output blindly.</p>
+  </div>
+  <div class="panel">
+    <div class="val-grid">
+      <div class="val-stat"><div class="v-num">4 / 4</div><div class="v-lbl">independent px/m scale estimates agree within 1.4%</div></div>
+      <div class="val-stat"><div class="v-num">~8cm</div><div class="v-lbl">mean reprojection error (12.6cm max)</div></div>
+      <div class="val-stat"><div class="v-num">1</div><div class="v-lbl">real measurement bug caught &amp; fixed by this validation</div></div>
+      <div class="val-stat"><div class="v-num">14 / 18</div><div class="v-lbl">plausible real team split from jersey-colour clustering</div></div>
+    </div>
+    <p style="color:var(--muted); font-size:0.88rem;">The pitch-calibration homography is checked against four independent real-world measurements &mdash; goal-box width/depth and penalty-box width/depth &mdash; computed from the same fitted scale. All four agree within 1.4% of each other, and reprojecting the fitted points back onto the frame lands within about 8cm on average. This cross-check is what caught a real bug during development: the standard pitch-geometry constants had the penalty-box depth wrong (20.15m instead of the correct 16.5m) until this validation exposed the mismatch.</p>
+    <img class="val-img" src="assets/pitch_calibration_verification.jpg" loading="lazy" alt="Pitch calibration verification overlay">
+  </div>
+</section>
+
+<section id="status">
+  <div class="section-head">
+    <div class="eyebrow">Pipeline status</div>
+    <h2>What's done, what's next</h2>
+  </div>
+  <div class="panel">
+    <ul class="stage-list">
+      <li><span class="chk">&#10003;</span> 1. Data access (SoccerNet) &mdash; request pending, script ready</li>
+      <li><span class="chk">&#10003;</span> 2. Detection &amp; tracking (YOLOv8 + ByteTrack) &mdash; done, validated on real video</li>
+      <li><span class="chk">&#10003;</span> 3. Pitch calibration (automatic line-detection homography) &mdash; done, validated to ~8cm mean error</li>
+      <li><span class="chk">&#10003;</span> 4. Team/role assignment (jersey-colour clustering) &mdash; done, validated on real footage</li>
+      <li><span class="chk">&#10003;</span> 5. Tracking dataset assembly (+ speed) &mdash; done, validated</li>
+      <li><span class="chk">&#10003;</span> 6. Movement analysis (role clustering + heatmaps) &mdash; done, validated</li>
+      <li><span class="chk">&#10003;</span> 7. Original contribution (space-creation score) &mdash; method validated, real ranking needs more data</li>
+      <li><span class="chk">&#10003;</span> 8. Dashboard (this page) &mdash; done</li>
+    </ul>
+    <p style="color:var(--muted); font-size:0.85rem; margin-top:14px; margin-bottom:0;">Every stage above runs on real video with real output, not placeholder data &mdash; honest limitations (ball-tracking fragmentation with generic COCO weights, sparse teammate co-visibility in a short single-angle clip) are called out explicitly rather than hidden, matching this project's companion xG model's approach to reporting results.</p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="foot-links">
+    <a href="https://github.com/emanuele-clc/player-tracking-movement-analysis" target="_blank" rel="noopener">Repository</a>
+    <a href="https://github.com/emanuele-clc/player-tracking-movement-analysis#readme" target="_blank" rel="noopener">Full methodology (README)</a>
+    <a href="https://github.com/emanuele-clc/expected-goals-xg-model" target="_blank" rel="noopener">Companion project: xG model</a>
+    <a href="https://github.com/emanuele-clc" target="_blank" rel="noopener">github.com/emanuele-clc</a>
+  </div>
+  Built end-to-end: real detection (YOLOv8/ByteTrack) &rarr; automatic pitch-line homography calibration &rarr; jersey-colour team clustering &rarr; role clustering &amp; heatmaps &rarr; Voronoi-based space-creation metric. Code: MIT licence. See the repository README for full methodology, honest limitations, and reproduction steps.
+</footer>
+
+<script>
+const DATA = /*__DASHBOARD_DATA_JSON__*/;
+
+const clipId = DATA.clips[0];
+const clip = DATA.tracking_by_clip[clipId];
+document.getElementById('clipNameLabel').textContent = clipId;
+
+const canvas = document.getElementById('pitchCanvas');
+const ctx = canvas.getContext('2d');
+const PAD = 30;
+const L = DATA.pitch.length_m, W = DATA.pitch.width_m;
+const scale = Math.min((canvas.width - 2*PAD) / L, (canvas.height - 2*PAD) / W);
+function toPx(x, y) {
+  return [PAD + x * scale, PAD + y * scale];
+}
+
+function drawPitch() {
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--pitch-green');
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--pitch-line');
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(...toPx(0,0), L*scale, W*scale);
+  DATA.pitch.edges.forEach(([i1, i2]) => {
+    const p1 = DATA.pitch.vertices_m[i1-1];
+    const p2 = DATA.pitch.vertices_m[i2-1];
+    const [x1,y1] = toPx(p1[0], p1[1]);
+    const [x2,y2] = toPx(p2[0], p2[1]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  });
+}
+
+const teamColor = {
+  team_0: getComputedStyle(document.documentElement).getPropertyValue('--team0'),
+  team_1: getComputedStyle(document.documentElement).getPropertyValue('--team1'),
+  referee_or_neutral: getComputedStyle(document.documentElement).getPropertyValue('--ref'),
+  unknown: '#888888',
+};
+
+function drawFrame(idx) {
+  drawPitch();
+  const frame = clip.frames[idx];
+  if (!frame) return;
+  frame.forEach(p => {
+    const [x, y] = toPx(p.x_m, p.y_m);
+    ctx.beginPath();
+    if (p.class === 'ball') {
+      ctx.fillStyle = '#ffffff';
+      ctx.arc(x, y, 4, 0, 2*Math.PI);
+    } else {
+      ctx.fillStyle = teamColor[p.team] || '#cccccc';
+      ctx.arc(x, y, 6, 0, 2*Math.PI);
+    }
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+  });
+}
+
+function drawHeatmap(key) {
+  drawPitch();
+  const hm = DATA.heatmap_grids[clipId];
+  if (!hm) return;
+  const grid = hm.grids[key];
+  if (!grid) return;
+  const gw = hm.grid_w, gh = hm.grid_h;
+  const cellW = (L / gw) * scale, cellH = (W / gh) * scale;
+  let maxVal = 0;
+  grid.forEach(col => col.forEach(v => { if (v > maxVal) maxVal = v; }));
+  if (maxVal === 0) return;
+  for (let i = 0; i < gw; i++) {
+    for (let j = 0; j < gh; j++) {
+      const v = grid[i][j];
+      if (v <= 0) continue;
+      const alpha = Math.min(1, v / maxVal);
+      const [x, y] = toPx(i * (L/gw), j * (W/gh));
+      ctx.fillStyle = `rgba(255, ${Math.round(140*(1-alpha))}, 0, ${0.15 + 0.7*alpha})`;
+      ctx.fillRect(x, y, cellW+1, cellH+1);
+    }
+  }
+}
+
+const frameIndices = Object.keys(clip.frames).map(Number).sort((a,b) => a-b);
+const slider = document.getElementById('frameSlider');
+slider.max = frameIndices.length - 1;
+const frameLabel = document.getElementById('frameLabel');
+let playing = false;
+let sliderPos = 0;
+let currentMode = 'none';
+
+function render() {
+  const idx = frameIndices[sliderPos];
+  if (currentMode === 'none') {
+    drawFrame(idx);
+    frameLabel.textContent = `Frame ${idx} (${sliderPos+1}/${frameIndices.length})`;
+  } else {
+    drawHeatmap(currentMode);
+    frameLabel.textContent = 'Heatmap view';
+  }
+}
+
+slider.addEventListener('input', () => { sliderPos = Number(slider.value); render(); });
+
+document.getElementById('playBtn').addEventListener('click', (e) => {
+  playing = !playing;
+  e.target.textContent = playing ? '⏸ Pause' : '▶ Play';
+  if (playing) tick();
+});
+
+function tick() {
+  if (!playing) return;
+  sliderPos = (sliderPos + 1) % frameIndices.length;
+  slider.value = sliderPos;
+  render();
+  setTimeout(() => requestAnimationFrame(tick), 90);
+}
+
+document.querySelectorAll('.hm-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.hm-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentMode = btn.dataset.key;
+    render();
+  });
+});
+
+render();
+
+// Role clusters table
+const clusterColors = ['#4fa8ff', '#ff6b57', '#f2c744', '#9d6bff', '#3fd68b'];
+const rolesBody = document.querySelector('#rolesTable tbody');
+DATA.role_clusters
+  .slice()
+  .sort((a,b) => a.role_cluster - b.role_cluster)
+  .forEach(r => {
+    const tr = document.createElement('tr');
+    const spread = Math.sqrt(r.std_x*r.std_x + r.std_y*r.std_y).toFixed(2);
+    tr.innerHTML = `<td>#${r.track_id}</td><td>${r.team}</td><td>${r.n_frames}</td>` +
+      `<td>${r.mean_x.toFixed(2)}</td><td>${r.mean_y.toFixed(2)}</td><td>${spread}</td>` +
+      `<td>${r.mean_speed.toFixed(2)}</td>` +
+      `<td><span class="role-chip" style="background:${clusterColors[r.role_cluster % clusterColors.length]}"></span>${r.role_cluster}</td>`;
+    rolesBody.appendChild(tr);
+  });
+
+// Space creation scores table
+const scoresBody = document.querySelector('#scoresTable tbody');
+DATA.space_creation_scores
+  .slice()
+  .sort((a,b) => b.space_creation_score - a.space_creation_score)
+  .forEach(s => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>#${s.track_id}</td><td>${s.n_valid_frames}</td><td>${s.space_creation_score.toFixed(1)}</td>`;
+    scoresBody.appendChild(tr);
+  });
+</script>
+
+</body>
+</html>

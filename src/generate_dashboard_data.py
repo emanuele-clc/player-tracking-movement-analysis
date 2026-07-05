@@ -1,8 +1,12 @@
 """
-Stage 8 (data prep): export every analysis output (tracking positions,
-pitch geometry, heatmap grids, role clusters, space-creation scores) into a
-single JSON file docs/index.html loads - the same self-contained,
-zero-backend dashboard approach used in expected-goals-xg-model.
+Stage 8 (data prep + build): export every analysis output (tracking
+positions, pitch geometry, heatmap grids, role clusters, space-creation
+scores) into docs/assets/dashboard_data.json, then render the final
+docs/index.html from docs/_index_template.html by injecting that JSON in
+place of the /*__DASHBOARD_DATA_JSON__*/ marker - the same self-contained,
+zero-backend dashboard approach used in expected-goals-xg-model, but with
+the HTML template kept separate from the data so re-running the pipeline
+never requires hand-editing the dashboard markup.
 
 Usage:
     python src/generate_dashboard_data.py
@@ -16,6 +20,8 @@ from pitch_config import SoccerPitchConfiguration
 
 PROCESSED_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
+TEMPLATE_PATH = DOCS_DIR / "_index_template.html"
+PLACEHOLDER = "/*__DASHBOARD_DATA_JSON__*/"
 
 
 def load_parquet_safe(path):
@@ -70,11 +76,24 @@ def main():
         "space_creation_scores": scores.to_dict(orient="records") if not scores.empty else [],
     }
 
+    data_json = json.dumps(data)
+
     out_path = DOCS_DIR / "assets" / "dashboard_data.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(data))
-    print(f"Wrote dashboard data ({len(json.dumps(data))} bytes) -> {out_path}")
+    out_path.write_text(data_json)
+    print(f"Wrote dashboard data ({len(data_json)} bytes) -> {out_path}")
     print(f"Clips: {clips}")
+
+    if TEMPLATE_PATH.exists():
+        template = TEMPLATE_PATH.read_text(encoding="utf-8")
+        if PLACEHOLDER not in template:
+            raise SystemExit(f"Placeholder {PLACEHOLDER!r} not found in {TEMPLATE_PATH}")
+        html = template.replace(PLACEHOLDER, data_json)
+        html_out_path = DOCS_DIR / "index.html"
+        html_out_path.write_text(html, encoding="utf-8")
+        print(f"Rendered dashboard ({len(html)} bytes) -> {html_out_path}")
+    else:
+        print(f"No template at {TEMPLATE_PATH} - skipped rendering docs/index.html")
 
 
 if __name__ == "__main__":

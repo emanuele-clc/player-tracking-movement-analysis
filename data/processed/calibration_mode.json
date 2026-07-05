@@ -33,10 +33,5 @@
     "mode": "pixel",
     "confidence": 0.0,
     "notes": "No goal-box or penalty-box lines were confidently matched on this camera angle, so positions are shown schematically (relative layout within the frame), not as real pitch metres. Same source footage as smoketest."
-  },
-  "13386254_3840_2160_24fps_940d56": {
-    "mode": "pixel",
-    "confidence": 0.495,
-    "notes": "Single penalty box match found (ratio error 0.2%). Only one box visible, so which end of the pitch this is cannot be confirmed - distances/speeds/heatmap shapes are still valid, absolute pitch position is a best guess."
   }
 }

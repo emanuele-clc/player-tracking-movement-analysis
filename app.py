@@ -45,12 +45,20 @@ st.set_page_config(page_title="Player Tracking - Analyze a match", layout="wide"
 # to theme Streamlit - survives version upgrades, unlike CSS overrides of
 # internal component classes). What follows only styles the handful of
 # custom, bespoke elements config.toml can't reach (the hero banner, section
-# labels, insights callout, badges) - kept deliberately free of CSS comments,
-# since Streamlit runs this string through its markdown parser first and
-# "/* ... */" comments get mangled by markdown's asterisk-as-bold handling,
-# which silently breaks the rest of the stylesheet.
+# labels, insights callout, badges).
+#
+# This MUST use st.html(), not st.markdown(..., unsafe_allow_html=True).
+# st.markdown still runs every string through Streamlit's markdown parser
+# before handing raw HTML through, and that parser mis-tokenizes plain CSS
+# more than once: first it was "/* ... */" comments (the "*" read as
+# markdown emphasis), then it was the attribute selector `[class*="css"]`
+# (the bare "*=" read the same way) - both silently truncated the <style>
+# block and dumped the rest of the CSS as literal visible text on the page.
+# st.html() bypasses the markdown parser entirely (sanitized via DOMPurify,
+# which leaves <style> tags intact), so no CSS syntax can ever trigger this
+# again, whatever character it happens to contain.
 # ---------------------------------------------------------------------------
-st.markdown("""
+st.html("""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -141,7 +149,7 @@ div[data-testid="stFileUploaderDropzone"] { border-radius: 12px; }
 
 iframe { border: none !important; }
 </style>
-""", unsafe_allow_html=True)
+""")
 
 st.markdown("""
 <div class="app-hero">
